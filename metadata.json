@@ -1,0 +1,7 @@
+{
+  "name": "ClimaConnect Pro",
+  "description": "Una plataforma avanzada de monitoreo para estaciones climatológicas con análisis predictivo impulsado por IA.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
