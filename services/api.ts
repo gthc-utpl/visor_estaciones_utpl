@@ -90,16 +90,24 @@ export const fetchActualClima = async (stationId: string): Promise<WeatherData> 
 export const fetchClimaRango = async (stationId: string, inicio: string, fin: string): Promise<WeatherData[]> => {
   try {
     if (!inicio || !fin) return [];
+
+    const startTime = performance.now();
+
     // API v2.1 usa /clima/historico/{station_id}
     const response = await fetch(`${API_BASE_URL}/clima/historico/${stationId}?inicio=${inicio}&fin=${fin}`);
     if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
     const data = await response.json();
     if (!Array.isArray(data)) return [];
 
-    return data
+    // La API v2.1 ya retorna datos ordenados descendentemente, mapear directamente
+    const mappedData = data
       .map(mapApiToWeatherData)
-      .filter(d => d.timestamp !== null)
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      .filter(d => d.timestamp !== null);
+
+    const endTime = performance.now();
+    console.log(`⚡ Fetched ${mappedData.length} records in ${(endTime - startTime).toFixed(2)}ms for station ${stationId}`);
+
+    return mappedData;
   } catch (error) {
     console.error("fetchClimaRango error:", error);
     return [];

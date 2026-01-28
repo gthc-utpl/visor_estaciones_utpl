@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { 
-  Cloud, 
-  Activity, 
-  LayoutDashboard, 
-  Network, 
-  Cpu, 
+import {
+  Cloud,
+  Activity,
+  LayoutDashboard,
+  Network,
+  Cpu,
   ChevronRight,
   RefreshCw,
   History,
@@ -29,8 +29,9 @@ import StatCard from './components/StatCard';
 import WeatherChart from './components/WeatherChart';
 import StationMap from './components/StationMap';
 import { analyzeStationData, analyzeHistoricalData } from './services/gemini';
-import { fetchStations, fetchActualClima, fetchClimaRango } from './services/api';
+import { fetchStations, fetchActualClima } from './services/api';
 import { MOCK_STATIONS } from './constants';
+import { useWeatherHistory } from './hooks/useWeatherHistory';
 
 const App: React.FC = () => {
   const [stations, setStations] = useState<Station[]>(MOCK_STATIONS);
@@ -38,13 +39,25 @@ const App: React.FC = () => {
   const [aiInsight, setAiInsight] = useState<AIInsight | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshingNetwork, setRefreshingNetwork] = useState(false);
-  const [loadingHistory, setLoadingHistory] = useState(false);
   const [loadingAI, setLoadingAI] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'network' | 'history'>('dashboard');
   const [networkSubView, setNetworkSubView] = useState<'list' | 'map'>('list');
-  
+
   const [startDate, setStartDate] = useState<string>(new Date(Date.now() - 24 * 3600000).toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
+  // Hook optimizado para datos históricos con caché y debounce
+  const {
+    data: historicalData,
+    loading: loadingHistory,
+    refetch: refetchHistory
+  } = useWeatherHistory({
+    stationId: selectedStation?.id || null,
+    startDate,
+    endDate,
+    enabled: activeTab === 'history', // Solo cargar cuando estamos en la pestaña de históricos
+    debounceDelay: 800 // 800ms delay para cambios de fechas
+  });
 
   const [networkVariable, setNetworkVariable] = useState<WeatherVariable>('temperature');
   const [historyVariable, setHistoryVariable] = useState<WeatherVariable>('temperature');
@@ -68,26 +81,20 @@ const App: React.FC = () => {
   const onSelectStation = async (station: Station) => {
     setSelectedStation({ ...station, history: [] });
     setAiInsight(null);
-    try {
-      // 1. Traemos actual y rango simultáneamente
-      const [actual, recentHist] = await Promise.all([
-        fetchActualClima(station.id).catch(() => null),
-        fetchClimaRango(station.id, startDate, endDate).catch(() => [])
-      ]);
 
-      // 2. Definimos el punto de verdad actual (solo para los StatCards)
-      let mergedActual: WeatherData = actual || station.currentData;
-      
-      // 3. El historial es puramente el de la API para mantener integridad
-      const fullStation = { 
-        ...station, 
-        currentData: mergedActual, 
-        history: recentHist 
+    try {
+      // Solo traer datos actuales, los históricos se manejan con useWeatherHistory
+      const actual = await fetchActualClima(station.id).catch(() => null);
+
+      const fullStation = {
+        ...station,
+        currentData: actual || station.currentData,
+        // Los históricos se actualizan a través de useWeatherHistory
+        history: activeTab === 'history' ? historicalData : station.history
       };
-      
+
       setSelectedStation(fullStation);
       setStations(prev => prev.map(s => s.id === station.id ? fullStation : s));
-
     } catch (err) {
       console.warn("Error al procesar estación", station.id);
     }
@@ -111,23 +118,15 @@ const App: React.FC = () => {
     initApp();
   }, []);
 
+  // Actualizar la estación seleccionada cuando cambien los datos históricos
   useEffect(() => {
-    // Al cargar históricos, usamos solo el resultado de la API sin inyectar el dato actual
-    if (activeTab === 'history' && selectedStation) {
-      const loadHist = async () => {
-        setLoadingHistory(true);
-        try {
-          const history = await fetchClimaRango(selectedStation.id, startDate, endDate);
-          setSelectedStation(prev => prev && prev.id === selectedStation.id ? { ...prev, history: history } : prev);
-        } catch (err) {
-          console.error("Historical error", err);
-        } finally {
-          setLoadingHistory(false);
-        }
-      };
-      loadHist();
+    if (activeTab === 'history' && selectedStation && historicalData.length > 0) {
+      setSelectedStation(prev => {
+        if (!prev || prev.id !== selectedStation.id) return prev;
+        return { ...prev, history: historicalData };
+      });
     }
-  }, [activeTab, startDate, endDate, selectedStation?.id]);
+  }, [historicalData, activeTab, selectedStation?.id]);
 
   const detectedVariables = useMemo(() => {
     if (!selectedStation) return [];
@@ -138,9 +137,11 @@ const App: React.FC = () => {
       });
     };
     checkObj(selectedStation.currentData);
-    selectedStation.history.forEach(checkObj);
+    // En la pestaña de históricos, usar historicalData optimizado
+    const dataToCheck = activeTab === 'history' ? historicalData : selectedStation.history;
+    dataToCheck.forEach(checkObj);
     return Array.from(keys);
-  }, [selectedStation?.currentData, selectedStation?.history]);
+  }, [selectedStation?.currentData, selectedStation?.history, historicalData, activeTab]);
 
   const dashboardChartKey = useMemo(() => {
     const preferred = ['temperature', 'humidity', 'windSpeed'];
@@ -149,7 +150,8 @@ const App: React.FC = () => {
   }, [detectedVariables]);
 
   const historyStats = useMemo(() => {
-    const hist = selectedStation?.history || [];
+    // Usar datos optimizados con caché cuando estamos en históricos
+    const hist = activeTab === 'history' ? historicalData : (selectedStation?.history || []);
     if (hist.length === 0) return null;
     const values = hist.map(d => d[historyVariable]).filter(t => typeof t === 'number') as number[];
     if (values.length === 0) return null;
@@ -160,14 +162,16 @@ const App: React.FC = () => {
       samples: values.length,
       unit: getVariableInfo(historyVariable).unit
     };
-  }, [selectedStation?.history, historyVariable]);
+  }, [historicalData, selectedStation?.history, historyVariable, activeTab]);
 
   const handleAIAnalysis = useCallback(async () => {
     if (!selectedStation) return;
     setLoadingAI(true);
     try {
-      const insight = activeTab === 'history' 
-        ? await analyzeHistoricalData(selectedStation.name, selectedStation.history)
+      // Usar datos optimizados con caché para análisis de históricos
+      const histData = activeTab === 'history' ? historicalData : selectedStation.history;
+      const insight = activeTab === 'history'
+        ? await analyzeHistoricalData(selectedStation.name, histData)
         : await analyzeStationData(selectedStation);
       setAiInsight(insight);
     } catch (err) {
@@ -175,7 +179,7 @@ const App: React.FC = () => {
     } finally {
       setLoadingAI(false);
     }
-  }, [selectedStation, activeTab]);
+  }, [selectedStation, activeTab, historicalData]);
 
   if (loading) {
     return (
@@ -202,7 +206,7 @@ const App: React.FC = () => {
 
         <div className="flex flex-col gap-2">
           {['dashboard', 'history', 'network'].map((tab) => (
-            <button 
+            <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
               className={`flex items-center gap-3 px-5 py-4 rounded-2xl transition-all ${activeTab === tab ? 'bg-blue-600 text-white shadow-xl' : 'hover:bg-slate-800/60 text-slate-400'}`}
@@ -219,7 +223,7 @@ const App: React.FC = () => {
 
         <div className="flex-1 flex flex-col min-h-0 border-t border-slate-800 pt-6">
           <p className="text-[10px] uppercase font-black text-slate-500 mb-4 tracking-[0.2em] px-2 flex items-center justify-between">
-            Estaciones API 
+            Estaciones API
             <span className="bg-slate-800 px-2 py-0.5 rounded text-white text-[9px]">{stations.length}</span>
           </p>
           <div className="flex-1 flex flex-col gap-2 overflow-y-auto pr-2 custom-scrollbar">
@@ -256,7 +260,7 @@ const App: React.FC = () => {
                   </p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={handleAIAnalysis}
                 disabled={loadingAI}
                 className="flex items-center gap-3 bg-white text-slate-900 px-8 py-4 rounded-2xl font-black hover:scale-105 transition-all disabled:opacity-50 shadow-2xl"
@@ -270,7 +274,7 @@ const App: React.FC = () => {
               {detectedVariables.map(v => {
                 const info = getVariableInfo(v);
                 return (
-                  <StatCard 
+                  <StatCard
                     key={v}
                     label={info.label}
                     value={selectedStation.currentData[v] !== null ? selectedStation.currentData[v]!.toFixed(1) : '--'}
@@ -288,12 +292,12 @@ const App: React.FC = () => {
                   Trend: {getVariableInfo(dashboardChartKey).label} (Últimas 24h)
                 </h3>
                 <div className="w-full h-64">
-                   <WeatherChart 
-                    data={selectedStation.history} 
-                    dataKey={dashboardChartKey} 
-                    color="#3b82f6" 
-                    label={getVariableInfo(dashboardChartKey).label} 
-                   />
+                  <WeatherChart
+                    data={selectedStation.history}
+                    dataKey={dashboardChartKey}
+                    color="#3b82f6"
+                    label={getVariableInfo(dashboardChartKey).label}
+                  />
                 </div>
               </div>
 
@@ -338,14 +342,14 @@ const App: React.FC = () => {
                 </p>
               </div>
               <div className="flex gap-4">
-                <input 
-                  type="date" 
+                <input
+                  type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                   className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-sm font-bold focus:border-emerald-500 outline-none"
                 />
-                <input 
-                  type="date" 
+                <input
+                  type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
                   className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-sm font-bold focus:border-emerald-500 outline-none"
@@ -365,7 +369,7 @@ const App: React.FC = () => {
                   </button>
                 ))}
               </div>
-              
+
               {loadingHistory ? (
                 <div className="h-64 flex flex-col items-center justify-center opacity-40">
                   <RefreshCw className="animate-spin mb-4" />
@@ -373,12 +377,12 @@ const App: React.FC = () => {
                 </div>
               ) : (
                 <div className="w-full h-80">
-                   <WeatherChart 
-                    data={selectedStation.history} 
-                    dataKey={historyVariable} 
-                    color="#10b981" 
-                    label={getVariableInfo(historyVariable).label} 
-                   />
+                  <WeatherChart
+                    data={historicalData}
+                    dataKey={historyVariable}
+                    color="#10b981"
+                    label={getVariableInfo(historyVariable).label}
+                  />
                 </div>
               )}
             </div>
@@ -404,19 +408,19 @@ const App: React.FC = () => {
 
         {activeTab === 'network' && (
           <div className="h-full flex flex-col space-y-10 animate-in fade-in duration-700">
-             <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
               <div className="space-y-2">
                 <h2 className="text-5xl font-black tracking-tighter uppercase">Red Global</h2>
                 <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Nodos Activos: {stations.length}</p>
               </div>
               <div className="flex bg-slate-900/80 border border-slate-800 rounded-2xl p-1">
-                <button 
+                <button
                   onClick={() => setNetworkSubView('list')}
                   className={`px-6 py-2 rounded-xl text-xs font-black uppercase transition-all ${networkSubView === 'list' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}
                 >
                   Lista
                 </button>
-                <button 
+                <button
                   onClick={() => setNetworkSubView('map')}
                   className={`px-6 py-2 rounded-xl text-xs font-black uppercase transition-all ${networkSubView === 'map' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}
                 >
@@ -427,8 +431,8 @@ const App: React.FC = () => {
 
             <div className="flex-1 min-h-[400px]">
               {networkSubView === 'map' ? (
-                <StationMap 
-                  stations={stations} 
+                <StationMap
+                  stations={stations}
                   variable={networkVariable}
                   unit={getVariableInfo(networkVariable).unit}
                   onStationSelect={(s) => { onSelectStation(s); setActiveTab('dashboard'); }}
@@ -436,7 +440,7 @@ const App: React.FC = () => {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {stations.map(s => (
-                    <div 
+                    <div
                       key={s.id}
                       onClick={() => { onSelectStation(s); setActiveTab('dashboard'); }}
                       className="glass p-6 rounded-[2rem] cursor-pointer hover:border-blue-500/50 transition-all bg-slate-900/10 group"
@@ -457,15 +461,15 @@ const App: React.FC = () => {
             </div>
 
             <div className="flex gap-4 pb-12 overflow-x-auto">
-               {['temperature', 'rainfall', 'windSpeed', 'humidity', 'pressure', 'pm25'].map(v => (
-                 <button
-                    key={v}
-                    onClick={() => setNetworkVariable(v as WeatherVariable)}
-                    className={`whitespace-nowrap px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all ${networkVariable === v ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-900 border-slate-800 text-slate-500'}`}
-                 >
-                    {getVariableInfo(v).label}
-                 </button>
-               ))}
+              {['temperature', 'rainfall', 'windSpeed', 'humidity', 'pressure', 'pm25'].map(v => (
+                <button
+                  key={v}
+                  onClick={() => setNetworkVariable(v as WeatherVariable)}
+                  className={`whitespace-nowrap px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all ${networkVariable === v ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-900 border-slate-800 text-slate-500'}`}
+                >
+                  {getVariableInfo(v).label}
+                </button>
+              ))}
             </div>
           </div>
         )}
