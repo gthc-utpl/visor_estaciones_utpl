@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@google/genai": "^1.37.0",
+    "@types/dygraphs": "^2.1.11",
+    "dygraphs": "^2.2.1",
     "leaflet": "1.9.4",
     "lucide-react": "^0.462.0",
     "react": "^19.2.3",

@@ -86,9 +86,18 @@ const App: React.FC = () => {
       // Solo traer datos actuales, los históricos se manejan con useWeatherHistory
       const actual = await fetchActualClima(station.id).catch(() => null);
 
+      // Si hay datos de la API, usarlos; si no, usar mock pero actualizar timestamp
+      let currentData = actual;
+      if (!actual || !actual.timestamp) {
+        currentData = {
+          ...station.currentData,
+          timestamp: new Date().toISOString() // Actualizar timestamp a hora actual
+        };
+      }
+
       const fullStation = {
         ...station,
-        currentData: actual || station.currentData,
+        currentData: currentData,
         // Los históricos se actualizan a través de useWeatherHistory
         history: activeTab === 'history' ? historicalData : station.history
       };
@@ -148,6 +157,31 @@ const App: React.FC = () => {
     for (const p of preferred) if (detectedVariables.includes(p as WeatherVariable)) return p as WeatherVariable;
     return detectedVariables[0] || 'temperature';
   }, [detectedVariables]);
+
+  // Calcular el timestamp más reciente entre datos actuales e históricos
+  const latestTimestamp = useMemo(() => {
+    if (!selectedStation) return new Date().toISOString();
+
+    const timestamps: string[] = [];
+
+    // Agregar timestamp de datos actuales
+    if (selectedStation.currentData?.timestamp) {
+      timestamps.push(selectedStation.currentData.timestamp);
+    }
+
+    // Agregar timestamps del historial (últimas 24h que se muestran en el dashboard)
+    if (selectedStation.history && selectedStation.history.length > 0) {
+      selectedStation.history.forEach(d => {
+        if (d.timestamp) timestamps.push(d.timestamp);
+      });
+    }
+
+    // Retornar el más reciente
+    if (timestamps.length === 0) return selectedStation.currentData?.timestamp || new Date().toISOString();
+
+    const sorted = timestamps.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+    return sorted[0];
+  }, [selectedStation?.currentData?.timestamp, selectedStation?.history]);
 
   const historyStats = useMemo(() => {
     // Usar datos optimizados con caché cuando estamos en históricos
@@ -256,7 +290,7 @@ const App: React.FC = () => {
                     <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">En Vivo</span>
                   </div>
                   <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">
-                    Actualizado: {new Date(selectedStation.currentData.timestamp).toLocaleString()}
+                    Actualizado: {new Date(latestTimestamp).toLocaleString()}
                   </p>
                 </div>
               </div>

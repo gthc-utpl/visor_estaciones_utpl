@@ -1,10 +1,10 @@
 
 import React, { useMemo } from 'react';
-import { 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
   AreaChart,
   Area,
@@ -42,7 +42,7 @@ const WeatherChart: React.FC<WeatherChartProps> = ({ data, dataKey, color, label
       return acc;
     }, {} as Record<string, WeatherData>);
 
-    const sorted = (Object.values(collapsed) as WeatherData[]).sort((a, b) => 
+    const sorted = (Object.values(collapsed) as WeatherData[]).sort((a, b) =>
       new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
     );
 
@@ -79,54 +79,72 @@ const WeatherChart: React.FC<WeatherChartProps> = ({ data, dataKey, color, label
   return (
     <div className="h-full w-full relative group select-none">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart 
-          data={chartData} 
+        <AreaChart
+          data={chartData}
           // Márgenes en cero para asegurar que las coordenadas del ratón coincidan con el área de dibujo
           margin={{ top: 10, right: 0, left: 0, bottom: 0 }}
         >
           <defs>
             <linearGradient id={`color-${String(dataKey)}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor={color} stopOpacity={0.4}/>
-              <stop offset="95%" stopColor={color} stopOpacity={0}/>
+              <stop offset="5%" stopColor={color} stopOpacity={0.4} />
+              <stop offset="95%" stopColor={color} stopOpacity={0} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} opacity={0.1} />
-          
-          <XAxis 
-            dataKey="timestampNum" 
+
+          <XAxis
+            dataKey="timestampNum"
             type="number"
-            // Forzar el dominio exacto de los datos para que el último punto esté en el borde derecho
             domain={['dataMin', 'dataMax']}
-            stroke="#64748b" 
-            fontSize={9} 
-            tickLine={false} 
+            stroke="#64748b"
+            fontSize={9}
+            tickLine={false}
             axisLine={false}
             padding={{ left: 0, right: 0 }}
-            tickFormatter={(unixTime) => new Date(unixTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            tickFormatter={(unixTime) => {
+              const date = new Date(unixTime);
+              const totalDuration = chartData[chartData.length - 1].timestampNum - chartData[0].timestampNum;
+              const hoursDiff = totalDuration / (1000 * 60 * 60);
+
+              // Lógica inteligente de formateo
+              if (hoursDiff <= 24) {
+                // Menos de 24h: Solo hora (14:30)
+                return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              } else if (hoursDiff <= 168) { // 7 días
+                // Semana actual: Dia + Hora (Lun 14:00)
+                return date.toLocaleString('es-EC', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+              } else if (hoursDiff <= 8760) { // 365 días
+                // Hasta 1 año: Dia + Mes (28 Ene)
+                return date.toLocaleDateString('es-EC', { day: '2-digit', month: 'short' });
+              } else {
+                // Más de un año: Mes + Año (Ene 2026)
+                return date.toLocaleDateString('es-EC', { month: 'short', year: 'numeric' });
+              }
+            }}
             minTickGap={50}
           />
-          
-          <YAxis 
-            stroke="#64748b" 
-            fontSize={9} 
-            tickLine={false} 
+
+          <YAxis
+            stroke="#64748b"
+            fontSize={9}
+            tickLine={false}
             axisLine={false}
             width={40}
             domain={[minVal - margin, maxVal + margin]}
             tickFormatter={(v) => v.toFixed(1)}
           />
-          
-          <Tooltip 
+
+          <Tooltip
             isAnimationActive={false}
             wrapperStyle={{ pointerEvents: 'none', outline: 'none' }}
-            cursor={{ 
-              stroke: color, 
-              strokeWidth: 2, 
+            cursor={{
+              stroke: color,
+              strokeWidth: 2,
               strokeDasharray: '4 4',
               opacity: 0.8
             }}
-            contentStyle={{ 
-              backgroundColor: 'rgba(15, 23, 42, 0.95)', 
+            contentStyle={{
+              backgroundColor: 'rgba(15, 23, 42, 0.95)',
               backdropFilter: 'blur(16px)',
               border: '1px solid rgba(255, 255, 255, 0.1)',
               borderRadius: '16px',
@@ -137,44 +155,44 @@ const WeatherChart: React.FC<WeatherChartProps> = ({ data, dataKey, color, label
             labelStyle={{ color: '#94a3b8', marginBottom: '6px', fontWeight: '800', textTransform: 'uppercase', fontSize: '9px' }}
             labelFormatter={(_, items) => items[0]?.payload?.fullTime}
             formatter={(value: any) => [
-              <span className="font-black text-white text-xl">{parseFloat(value).toFixed(2)}</span>, 
+              <span className="font-black text-white text-xl">{parseFloat(value).toFixed(2)}</span>,
               <span className="text-[10px] uppercase font-black tracking-widest ml-2" style={{ color }}>{label}</span>
             ]}
           />
-          
-          <Area 
+
+          <Area
             // 'linear' es clave para precisión: la línea es una ruta directa entre puntos sin oscilaciones
-            type="linear" 
-            dataKey="value" 
-            stroke={color} 
+            type="linear"
+            dataKey="value"
+            stroke={color}
             strokeWidth={3}
-            fillOpacity={1} 
-            fill={`url(#color-${String(dataKey)})`} 
+            fillOpacity={1}
+            fill={`url(#color-${String(dataKey)})`}
             isAnimationActive={false}
             connectNulls={true}
             // Puntos guía sutiles para indicar dónde hay registros reales
-            dot={{ 
-              r: 2, 
-              fill: color, 
-              strokeWidth: 0, 
-              fillOpacity: 0.2 
+            dot={{
+              r: 2,
+              fill: color,
+              strokeWidth: 0,
+              fillOpacity: 0.2
             }}
             // Punto activo de seguimiento instantáneo
             // Fix: Remove isAnimationActive as it is not a valid property of ActiveDotProps in recharts
-            activeDot={{ 
-              r: 8, 
-              stroke: '#0f172a', 
-              strokeWidth: 3, 
+            activeDot={{
+              r: 8,
+              stroke: '#0f172a',
+              strokeWidth: 3,
               fill: color
             }}
           />
 
           {chartData.length > 0 && (
-            <ReferenceLine 
-              y={chartData[chartData.length - 1].value as number} 
-              stroke={color} 
-              strokeDasharray="3 3" 
-              opacity={0.1} 
+            <ReferenceLine
+              y={chartData[chartData.length - 1].value as number}
+              stroke={color}
+              strokeDasharray="3 3"
+              opacity={0.1}
             />
           )}
         </AreaChart>
