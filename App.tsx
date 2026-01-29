@@ -152,10 +152,14 @@ const App: React.FC = () => {
     return Array.from(keys);
   }, [selectedStation?.currentData, selectedStation?.history, historicalData, activeTab]);
 
-  const dashboardChartKey = useMemo(() => {
-    const preferred = ['temperature', 'humidity', 'windSpeed'];
-    for (const p of preferred) if (detectedVariables.includes(p as WeatherVariable)) return p as WeatherVariable;
-    return detectedVariables[0] || 'temperature';
+  // Estado para la variable activa en el gráfico del dashboard
+  const [activeVariable, setActiveVariable] = useState<WeatherVariable>('temperature');
+
+  // Actualizar la variable activa si no está disponible en la estación actual
+  useEffect(() => {
+    if (detectedVariables.length > 0 && !detectedVariables.includes(activeVariable)) {
+      setActiveVariable(detectedVariables[0]);
+    }
   }, [detectedVariables]);
 
   // Calcular el timestamp más reciente entre datos actuales e históricos
@@ -307,6 +311,7 @@ const App: React.FC = () => {
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {detectedVariables.map(v => {
                 const info = getVariableInfo(v);
+                const isActive = activeVariable === v;
                 return (
                   <StatCard
                     key={v}
@@ -315,24 +320,48 @@ const App: React.FC = () => {
                     unit={info.unit}
                     icon={info.icon}
                     colorClass={info.color}
+                    onClick={() => setActiveVariable(v)}
+                    isActive={isActive}
                   />
                 );
               })}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
               <div className="lg:col-span-2 glass p-8 rounded-[2.5rem] border-slate-800/60 shadow-2xl bg-slate-900/10 min-h-[400px]">
-                <h3 className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-500 mb-10 flex items-center gap-3 border-l-4 border-blue-600 pl-4">
-                  Trend: {getVariableInfo(dashboardChartKey).label} (Últimas 24h)
-                </h3>
-                <div className="w-full h-64">
-                  <WeatherChart
-                    data={selectedStation.history}
-                    dataKey={dashboardChartKey}
-                    color="#3b82f6"
-                    label={getVariableInfo(dashboardChartKey).label}
-                  />
-                </div>
+                {/* Lógica para obtener datos recientes */}
+                {(() => {
+                  const last24hData = selectedStation.history.filter(d => {
+                    const date = new Date(d.timestamp);
+                    const now = new Date();
+                    const timeDiff = now.getTime() - date.getTime();
+                    return timeDiff <= 24 * 60 * 60 * 1000;
+                  });
+
+                  return (
+                    <>
+                      <h3 className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-500 mb-10 flex items-center gap-3 border-l-4 border-blue-600 pl-4">
+                        {getVariableInfo(activeVariable).label} (Últimas 24h)
+                      </h3>
+                      <div className="w-full h-64">
+                        {last24hData.length > 0 ? (
+                          <WeatherChart
+                            data={last24hData}
+                            dataKey={activeVariable}
+                            color="#3b82f6"
+                            label={getVariableInfo(activeVariable).label}
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center h-full text-slate-500">
+                            <span className="text-3xl mb-2">zzz...</span>
+                            <p className="text-xs uppercase font-bold tracking-widest">Sin actividad reciente (24h)</p>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
 
               <div className="glass p-8 rounded-[2.5rem] bg-indigo-950/20 border-indigo-500/20 shadow-2xl flex flex-col">
