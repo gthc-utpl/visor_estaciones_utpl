@@ -5,8 +5,7 @@ import {
   Activity,
   LayoutDashboard,
   Network,
-  Cpu,
-  ChevronRight,
+
   RefreshCw,
   History,
   Calendar,
@@ -24,12 +23,12 @@ import {
   Battery,
   Info
 } from 'lucide-react';
-import { Station, AIInsight, WeatherVariable, WeatherData } from './types';
+import { Station, WeatherVariable, WeatherData } from './types';
 import StatCard from './components/StatCard';
 import WeatherChart from './components/WeatherChart';
 import RainfallChart from './components/RainfallChart';
 import StationMap from './components/StationMap';
-import { analyzeStationData, analyzeHistoricalData } from './services/gemini';
+
 import { fetchStations, fetchActualClima } from './services/api';
 import { MOCK_STATIONS } from './constants';
 import { useWeatherHistory } from './hooks/useWeatherHistory';
@@ -37,10 +36,10 @@ import { useWeatherHistory } from './hooks/useWeatherHistory';
 const App: React.FC = () => {
   const [stations, setStations] = useState<Station[]>(MOCK_STATIONS);
   const [selectedStation, setSelectedStation] = useState<Station | null>(null);
-  const [aiInsight, setAiInsight] = useState<AIInsight | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [refreshingNetwork, setRefreshingNetwork] = useState(false);
-  const [loadingAI, setLoadingAI] = useState(false);
+
   const [activeTab, setActiveTab] = useState<'station' | 'network'>('network');
   const [networkSubView, setNetworkSubView] = useState<'list' | 'map'>('map');
 
@@ -116,7 +115,7 @@ const App: React.FC = () => {
 
   const onSelectStation = async (station: Station, switchTab = true) => {
     setSelectedStation({ ...station, history: [] });
-    setAiInsight(null);
+
     if (switchTab) setActiveTab('station'); // Cambiar a vista de estación solo si se solicita
 
     try {
@@ -206,18 +205,7 @@ const App: React.FC = () => {
     };
   }, [historicalData, activeVariable]);
 
-  const handleAIAnalysis = useCallback(async () => {
-    if (!selectedStation) return;
-    setLoadingAI(true);
-    try {
-      const insight = await analyzeHistoricalData(selectedStation.name, historicalData);
-      setAiInsight(insight);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingAI(false);
-    }
-  }, [selectedStation, historicalData]);
+
 
 
   if (loading) {
@@ -416,27 +404,7 @@ const App: React.FC = () => {
               )}
             </div>
 
-            {/* AI Insight - OCULTO */}
-            {/* {aiInsight && (
-              <div className="glass p-8 rounded-[2.5rem] bg-indigo-950/20 border-indigo-500/20 shadow-2xl">
-                <div className="flex items-center gap-3 mb-6">
-                  <Cpu className="text-indigo-400" size={24} />
-                  <h3 className="text-xl font-black uppercase tracking-tight">Análisis IA</h3>
-                </div>
-                <div className="space-y-6">
-                  <p className="text-sm text-slate-300 leading-relaxed font-medium italic">"{aiInsight.summary}"</p>
-                  <div className="space-y-3">
-                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Recomendaciones</p>
-                    {aiInsight.recommendations.map((r, i) => (
-                      <div key={i} className="flex gap-3 text-xs text-slate-400 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
-                        <ChevronRight size={14} className="text-indigo-500 shrink-0 mt-0.5" />
-                        <span className="leading-relaxed">{r}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )} */}
+
           </div>
         )}
 

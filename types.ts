@@ -34,11 +34,6 @@ export interface Station {
   supportedVariables: WeatherVariable[];
 }
 
-export interface AIInsight {
-  summary: string;
-  recommendations: string[];
-  riskLevel: 'low' | 'medium' | 'high';
-  trends: string;
-}
+
 
 export type WeatherVariable = keyof Omit<WeatherData, 'timestamp'>;
