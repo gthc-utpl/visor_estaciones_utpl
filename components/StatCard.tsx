@@ -16,25 +16,25 @@ const StatCard: React.FC<StatCardProps> = ({ label, value, unit, icon, colorClas
     <div
       onClick={onClick}
       className={`
-        glass p-4 rounded-2xl flex items-center gap-4 transition-all duration-300 cursor-pointer select-none
+        bg-white/80 p-4 rounded-2xl flex items-center gap-4 transition-all duration-300 cursor-pointer select-none border-2
         ${isActive
-          ? 'border-blue-500 bg-blue-500/10 shadow-[0_0_20px_rgba(59,130,246,0.3)]'
-          : 'hover:border-blue-500/50 hover:bg-slate-800/50'
+          ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-lg shadow-blue-500/20 scale-105'
+          : 'border-slate-200 hover:border-blue-400 hover:bg-gradient-to-br hover:from-slate-50 hover:to-blue-50 hover:shadow-md'
         }
       `}
     >
-      <div className={`p-3 rounded-xl transition-colors duration-300 ${isActive ? 'bg-blue-500 text-white' : colorClass}`}>
+      <div className={`p-3 rounded-xl transition-all duration-300 ${isActive ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-md' : colorClass}`}>
         {icon}
       </div>
       <div>
-        <p className={`text-sm font-medium transition-colors ${isActive ? 'text-blue-200' : 'text-slate-400'}`}>
+        <p className={`text-sm font-bold transition-colors uppercase tracking-wide ${isActive ? 'text-blue-700' : 'text-slate-600'}`}>
           {label}
         </p>
         <div className="flex items-baseline gap-1">
-          <span className={`text-2xl font-bold transition-colors ${isActive ? 'text-white' : ''}`}>
+          <span className={`text-2xl font-black transition-colors ${isActive ? 'text-blue-600' : 'text-slate-800'}`}>
             {value}
           </span>
-          <span className={`text-sm transition-colors ${isActive ? 'text-blue-300' : 'text-slate-500'}`}>
+          <span className={`text-sm font-bold transition-colors ${isActive ? 'text-blue-500' : 'text-slate-500'}`}>
             {unit}
           </span>
         </div>

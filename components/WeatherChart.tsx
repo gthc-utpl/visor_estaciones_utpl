@@ -17,9 +17,10 @@ interface WeatherChartProps {
   dataKey: keyof WeatherData;
   color: string;
   label: string;
+  unit?: string; // Unidad de medida para mostrar en el eje Y
 }
 
-const WeatherChart: React.FC<WeatherChartProps> = ({ data, dataKey, color, label }) => {
+const WeatherChart: React.FC<WeatherChartProps> = ({ data, dataKey, color, label, unit = '' }) => {
   /**
    * PROCESAMIENTO DE DATOS PARA MÁXIMA PRECISIÓN:
    * Convertimos los datos a una serie numérica real para evitar el desfase de 'categorías'.
@@ -65,8 +66,8 @@ const WeatherChart: React.FC<WeatherChartProps> = ({ data, dataKey, color, label
 
   if (chartData.length === 0) {
     return (
-      <div className="h-64 w-full flex items-center justify-center border border-slate-800 rounded-3xl bg-slate-900/20">
-        <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest italic animate-pulse">Sincronizando Telemetría...</p>
+      <div className="h-64 w-full flex items-center justify-center border-2 border-slate-200 rounded-3xl bg-slate-50">
+        <p className="text-slate-600 text-[10px] font-black uppercase tracking-widest italic animate-pulse">Sincronizando Telemetría...</p>
       </div>
     );
   }
@@ -90,7 +91,7 @@ const WeatherChart: React.FC<WeatherChartProps> = ({ data, dataKey, color, label
               <stop offset="95%" stopColor={color} stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} opacity={0.1} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" vertical={false} opacity={0.3} />
 
           <XAxis
             dataKey="timestampNum"
@@ -131,11 +132,11 @@ const WeatherChart: React.FC<WeatherChartProps> = ({ data, dataKey, color, label
             axisLine={false}
             width={40}
             domain={[minVal - margin, maxVal + margin]}
-            tickFormatter={(v) => v.toFixed(1)}
+            tickFormatter={(v) => `${v.toFixed(1)}${unit ? ' ' + unit : ''}`}
           />
 
           <Tooltip
-            isAnimationActive={false}
+            isAnimationActive={true}
             wrapperStyle={{ pointerEvents: 'none', outline: 'none' }}
             cursor={{
               stroke: color,
@@ -144,18 +145,18 @@ const WeatherChart: React.FC<WeatherChartProps> = ({ data, dataKey, color, label
               opacity: 0.8
             }}
             contentStyle={{
-              backgroundColor: 'rgba(15, 23, 42, 0.95)',
+              backgroundColor: 'rgba(255, 255, 255, 0.98)',
               backdropFilter: 'blur(16px)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
+              border: '2px solid rgba(59, 130, 246, 0.3)',
               borderRadius: '16px',
               fontSize: '11px',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.8)',
+              boxShadow: '0 10px 40px -10px rgba(0, 0, 0, 0.2)',
               padding: '12px'
             }}
-            labelStyle={{ color: '#94a3b8', marginBottom: '6px', fontWeight: '800', textTransform: 'uppercase', fontSize: '9px' }}
+            labelStyle={{ color: '#64748b', marginBottom: '6px', fontWeight: '800', textTransform: 'uppercase', fontSize: '9px' }}
             labelFormatter={(_, items) => items[0]?.payload?.fullTime}
             formatter={(value: any) => [
-              <span className="font-black text-white text-xl">{parseFloat(value).toFixed(2)}</span>,
+              <span className="font-black text-slate-800 text-xl">{parseFloat(value).toFixed(2)}</span>,
               <span className="text-[10px] uppercase font-black tracking-widest ml-2" style={{ color }}>{label}</span>
             ]}
           />
@@ -168,7 +169,9 @@ const WeatherChart: React.FC<WeatherChartProps> = ({ data, dataKey, color, label
             strokeWidth={3}
             fillOpacity={1}
             fill={`url(#color-${String(dataKey)})`}
-            isAnimationActive={false}
+            isAnimationActive={true}
+            animationDuration={800}
+            animationEasing="ease-out"
             connectNulls={true}
             // Puntos guía sutiles para indicar dónde hay registros reales
             dot={{
@@ -181,8 +184,8 @@ const WeatherChart: React.FC<WeatherChartProps> = ({ data, dataKey, color, label
             // Fix: Remove isAnimationActive as it is not a valid property of ActiveDotProps in recharts
             activeDot={{
               r: 8,
-              stroke: '#0f172a',
-              strokeWidth: 3,
+              stroke: 'white',
+              strokeWidth: 2,
               fill: color
             }}
           />

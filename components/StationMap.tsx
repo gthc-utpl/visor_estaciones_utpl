@@ -71,7 +71,7 @@ const StationMap: React.FC<StationMapProps> = ({ stations, variable, unit, onSta
   const getColorForValue = (val: number | null | undefined): string => {
     if (val === null || val === undefined) return '#334155';
     const range = variableRanges.find(r => val >= r.min && val < r.max);
-    return range ? range.color : (val > variableRanges[variableRanges.length-1].max ? variableRanges[variableRanges.length-1].color : '#334155');
+    return range ? range.color : (val > variableRanges[variableRanges.length - 1].max ? variableRanges[variableRanges.length - 1].color : '#334155');
   };
 
   const getShadowForValue = (val: number | null | undefined): string => {
@@ -85,12 +85,12 @@ const StationMap: React.FC<StationMapProps> = ({ stations, variable, unit, onSta
 
     mapRef.current = L.map(mapContainerRef.current, {
       center: [-3.99, -79.20],
-      zoom: 13,
+      zoom: 12,
       zoomControl: false,
       attributionControl: true
     });
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; CARTO',
       subdomains: 'abcd',
       maxZoom: 20
@@ -119,16 +119,23 @@ const StationMap: React.FC<StationMapProps> = ({ stations, variable, unit, onSta
       const markerColor = getColorForValue(val);
       const markerShadow = getShadowForValue(val);
       const isOffline = val === null || val === undefined;
-      
+      const valStr = !isOffline ? `${val.toFixed(1)}${unit}` : 'OFF';
+
       const customIcon = L.divIcon({
         className: 'custom-div-icon',
         html: `
           <div class="relative group">
-            <div class="w-7 h-7 rounded-full border-[3px] border-[#020617] flex items-center justify-center transition-all duration-300 transform group-hover:scale-125" 
+            <div class="w-7 h-7 rounded-full border-[3px] border-white shadow-lg flex items-center justify-center transition-all duration-300 transform group-hover:scale-125" 
                  style="background-color: ${markerColor}; box-shadow: 0 0 20px ${markerShadow};">
-              ${!isOffline ? '<div class="w-1.5 h-1.5 bg-white/60 rounded-full animate-ping"></div>' : ''}
+              ${!isOffline ? '<div class="w-1.5 h-1.5 bg-white/80 rounded-full animate-ping"></div>' : ''}
             </div>
-            <div class="absolute -bottom-10 left-1/2 -translate-x-1/2 whitespace-nowrap glass px-3 py-1 rounded-full text-[9px] font-black text-white border-slate-700 opacity-0 group-hover:opacity-100 transition-all pointer-events-none uppercase tracking-tighter shadow-2xl z-[1001]">
+            <!-- Valor al lado del punto -->
+            <div class="absolute left-9 top-0 whitespace-nowrap bg-white/95 px-2 py-0.5 rounded-md text-[9px] font-black border border-slate-300 shadow-md pointer-events-none" 
+                 style="color: ${markerColor};">
+              ${valStr}
+            </div>
+            <!-- Nombre en hover -->
+            <div class="absolute -bottom-10 left-1/2 -translate-x-1/2 whitespace-nowrap bg-white/95 px-3 py-1 rounded-full text-[9px] font-black text-slate-800 border border-slate-300 opacity-0 group-hover:opacity-100 transition-all pointer-events-none uppercase tracking-tighter shadow-xl z-[1001]">
               ${station.name}
             </div>
           </div>
@@ -141,21 +148,20 @@ const StationMap: React.FC<StationMapProps> = ({ stations, variable, unit, onSta
         .addTo(mapRef.current!)
         .on('click', () => onStationSelect(station));
 
-      const valStr = !isOffline ? `${val.toFixed(1)}${unit}` : 'OFF';
-      
+
       marker.bindTooltip(`
         <div class="p-3 min-w-[140px]">
           <div class="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Nodo Estación</div>
-          <div class="text-xs font-black text-white uppercase truncate">${station.name}</div>
-          <div class="mt-2 pt-2 border-t border-slate-800 flex justify-between items-baseline">
-            <span class="text-[9px] font-bold text-slate-400 uppercase">${variable}</span>
-            <span class="text-sm font-black text-white" style="color: ${markerColor}">${valStr}</span>
+          <div class="text-xs font-black text-slate-800 uppercase truncate">${station.name}</div>
+          <div class="mt-2 pt-2 border-t border-slate-200 flex justify-between items-baseline">
+            <span class="text-[9px] font-bold text-slate-600 uppercase">${variable}</span>
+            <span class="text-sm font-black" style="color: ${markerColor}">${valStr}</span>
           </div>
         </div>
       `, {
         direction: 'top',
         offset: [0, -15],
-        className: 'glass !bg-[#0f172a]/95 !border-slate-800 !rounded-2xl !p-0 overflow-hidden !shadow-2xl'
+        className: '!bg-white/95 !border-slate-300 !rounded-2xl !p-0 overflow-hidden !shadow-xl'
       });
 
       markersRef.current.push(marker);
@@ -163,63 +169,51 @@ const StationMap: React.FC<StationMapProps> = ({ stations, variable, unit, onSta
     });
 
     if (stations.length > 0) {
-      mapRef.current.fitBounds(group.getBounds(), { padding: [100, 100], maxZoom: 15 });
+      mapRef.current.fitBounds(group.getBounds(), { padding: [60, 60], maxZoom: 12 });
     }
   }, [stations, variable, unit]);
 
   return (
     <div className="relative w-full h-full flex flex-col">
-      {/* Network Command Box */}
-      <div className="absolute top-8 left-8 z-[1000] pointer-events-none space-y-4">
-        <div className="glass p-5 rounded-[2rem] border-indigo-500/20 shadow-2xl bg-slate-950/70 backdrop-blur-xl max-w-xs">
-           <div className="flex items-center gap-3 mb-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse shadow-[0_0_10px_rgba(99,102,241,0.8)]"></div>
-              <h3 className="text-[11px] font-black uppercase tracking-[0.3em] text-indigo-400">Network Command</h3>
-           </div>
-           <div className="space-y-1">
-             <p className="text-[10px] text-slate-300 font-black uppercase tracking-wider">Visualizando {variable}</p>
-             <p className="text-[8px] text-slate-500 font-bold uppercase tracking-tight">Sincronización UTPL :: v1.3.1 Active</p>
-           </div>
+      {/* Network Command Box - ELIMINADO */}
+
+      {/* Leyenda de Escala - Compacta y elegante */}
+      <div className="absolute top-4 right-4 z-[1000]">
+        <div className="bg-white/98 p-3 rounded-2xl border border-slate-200 backdrop-blur-xl shadow-lg">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="bg-indigo-100 p-1 rounded-md">
+              <Info size={12} className="text-indigo-600" />
+            </div>
+            <span className="text-[9px] font-black uppercase tracking-wider text-slate-700">Escala</span>
+          </div>
+          <div className="space-y-2">
+            {variableRanges.map((range, idx) => (
+              <div key={idx} className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full shadow-md" style={{ backgroundColor: range.color, boxShadow: `0 0 8px ${range.shadow}` }}></div>
+                  <span className="text-[9px] font-bold text-slate-700 uppercase tracking-tight">{range.label}</span>
+                </div>
+                <span className="text-[8px] font-mono text-slate-500 font-bold">
+                  {range.min}{idx === variableRanges.length - 1 ? '+' : ''}{unit}
+                </span>
+              </div>
+            ))}
+            <div className="pt-2 mt-2 border-t border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-slate-400"></div>
+                <span className="text-[9px] font-bold text-slate-600 uppercase">Sin Dato</span>
+              </div>
+              <span className="text-[8px] font-mono text-slate-400 font-bold">--</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Rango de Colores Legend */}
-      <div className="absolute bottom-8 left-8 z-[1000]">
-        <div className="glass p-5 rounded-[2.5rem] border-slate-800 bg-slate-950/90 backdrop-blur-2xl shadow-2xl min-w-[200px]">
-           <div className="flex items-center gap-2 mb-5">
-              <div className="bg-indigo-500/20 p-1.5 rounded-lg">
-                <Info size={14} className="text-indigo-400" />
-              </div>
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">Escala Crítica</span>
-           </div>
-           <div className="space-y-4">
-              {variableRanges.map((range, idx) => (
-                <div key={idx} className="flex items-center justify-between gap-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 rounded-full shadow-lg" style={{ backgroundColor: range.color, boxShadow: `0 0 10px ${range.shadow}` }}></div>
-                    <span className="text-[10px] font-black text-slate-100 uppercase tracking-tight">{range.label}</span>
-                  </div>
-                  <span className="text-[10px] font-mono text-slate-500 font-bold">
-                    {range.min}{idx === variableRanges.length - 1 ? '+' : ''}{unit}
-                  </span>
-                </div>
-              ))}
-              <div className="pt-3 mt-3 border-t border-slate-800 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-3 h-3 rounded-full bg-slate-700"></div>
-                  <span className="text-[10px] font-black text-slate-500 uppercase">Sin Reporte</span>
-                </div>
-                <span className="text-[10px] font-mono text-slate-700 font-bold">--</span>
-              </div>
-           </div>
-        </div>
-      </div>
+      <div ref={mapContainerRef} className="flex-1 w-full rounded-[3rem] overflow-hidden border border-slate-300 shadow-lg z-0" />
 
-      <div ref={mapContainerRef} className="flex-1 w-full rounded-[3rem] overflow-hidden border border-slate-800 shadow-inner z-0" />
-
-      <div className="absolute bottom-8 right-16 z-[1000]">
-        <div className="glass px-5 py-2.5 rounded-2xl text-[9px] font-mono text-slate-400 border-slate-800 bg-slate-950/70 uppercase tracking-widest shadow-xl">
-          UTPL_GRID_V1.3.1 :: LOJA_GRID
+      <div className="absolute bottom-4 right-4 z-[1000]">
+        <div className="bg-white/90 px-3 py-1.5 rounded-lg text-[8px] font-mono text-slate-500 border border-slate-200 uppercase tracking-wider shadow-md">
+          UTPL v1.3.1
         </div>
       </div>
     </div>

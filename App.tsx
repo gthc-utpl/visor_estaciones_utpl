@@ -27,6 +27,7 @@ import {
 import { Station, AIInsight, WeatherVariable, WeatherData } from './types';
 import StatCard from './components/StatCard';
 import WeatherChart from './components/WeatherChart';
+import RainfallChart from './components/RainfallChart';
 import StationMap from './components/StationMap';
 import { analyzeStationData, analyzeHistoricalData } from './services/gemini';
 import { fetchStations, fetchActualClima } from './services/api';
@@ -40,11 +41,47 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshingNetwork, setRefreshingNetwork] = useState(false);
   const [loadingAI, setLoadingAI] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'network' | 'history'>('dashboard');
-  const [networkSubView, setNetworkSubView] = useState<'list' | 'map'>('list');
+  const [activeTab, setActiveTab] = useState<'station' | 'network'>('network');
+  const [networkSubView, setNetworkSubView] = useState<'list' | 'map'>('map');
+
+  // Rangos de tiempo predefinidos
+  type TimeRange = '24h' | '3d' | '7d' | '30d' | '1y';
+  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('24h');
 
   const [startDate, setStartDate] = useState<string>(new Date(Date.now() - 24 * 3600000).toISOString().split('T')[0]);
   const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+
+  // Función para actualizar el rango de tiempo
+  const handleTimeRangeChange = (range: TimeRange) => {
+    setSelectedTimeRange(range);
+    const now = new Date();
+    const end = now.toISOString().split('T')[0];
+    let start: Date;
+
+    switch (range) {
+      case '24h':
+        start = new Date(now.getTime() - 24 * 3600000);
+        break;
+      case '3d':
+        start = new Date(now.getTime() - 3 * 24 * 3600000);
+        break;
+      case '7d':
+        start = new Date(now.getTime() - 7 * 24 * 3600000);
+        break;
+      case '30d':
+        start = new Date(now.getTime() - 30 * 24 * 3600000);
+        break;
+      case '1y':
+        start = new Date(now.getTime() - 365 * 24 * 3600000);
+        break;
+      default:
+        start = new Date(now.getTime() - 24 * 3600000);
+    }
+
+    setStartDate(start.toISOString().split('T')[0]);
+    setEndDate(end);
+  };
+
 
   // Hook optimizado para datos históricos con caché y debounce
   const {
@@ -55,12 +92,11 @@ const App: React.FC = () => {
     stationId: selectedStation?.id || null,
     startDate,
     endDate,
-    enabled: activeTab === 'history', // Solo cargar cuando estamos en la pestaña de históricos
+    enabled: activeTab === 'station', // Cargar cuando estamos en la vista de estación
     debounceDelay: 800 // 800ms delay para cambios de fechas
   });
 
   const [networkVariable, setNetworkVariable] = useState<WeatherVariable>('temperature');
-  const [historyVariable, setHistoryVariable] = useState<WeatherVariable>('temperature');
 
   const variableConfig: Record<string, { label: string, unit: string, icon: React.ReactNode, color: string }> = {
     temperature: { label: 'Temperatura', unit: '°C', icon: <Thermometer size={18} />, color: 'bg-orange-500/10 text-orange-400' },
@@ -81,6 +117,8 @@ const App: React.FC = () => {
   const onSelectStation = async (station: Station) => {
     setSelectedStation({ ...station, history: [] });
     setAiInsight(null);
+    setActiveTab('station'); // Cambiar a vista de estación
+
 
     try {
       // Solo traer datos actuales, los históricos se manejan con useWeatherHistory
@@ -98,8 +136,7 @@ const App: React.FC = () => {
       const fullStation = {
         ...station,
         currentData: currentData,
-        // Los históricos se actualizan a través de useWeatherHistory
-        history: activeTab === 'history' ? historicalData : station.history
+        history: [] // Los históricos se manejan por separado con useWeatherHistory
       };
 
       setSelectedStation(fullStation);
@@ -127,16 +164,6 @@ const App: React.FC = () => {
     initApp();
   }, []);
 
-  // Actualizar la estación seleccionada cuando cambien los datos históricos
-  useEffect(() => {
-    if (activeTab === 'history' && selectedStation && historicalData.length > 0) {
-      setSelectedStation(prev => {
-        if (!prev || prev.id !== selectedStation.id) return prev;
-        return { ...prev, history: historicalData };
-      });
-    }
-  }, [historicalData, activeTab, selectedStation?.id]);
-
   const detectedVariables = useMemo(() => {
     if (!selectedStation) return [];
     const keys = new Set<WeatherVariable>();
@@ -146,11 +173,10 @@ const App: React.FC = () => {
       });
     };
     checkObj(selectedStation.currentData);
-    // En la pestaña de históricos, usar historicalData optimizado
-    const dataToCheck = activeTab === 'history' ? historicalData : selectedStation.history;
-    dataToCheck.forEach(checkObj);
+    // Usar historicalData del hook
+    historicalData.forEach(checkObj);
     return Array.from(keys);
-  }, [selectedStation?.currentData, selectedStation?.history, historicalData, activeTab]);
+  }, [selectedStation?.currentData, historicalData]);
 
   // Estado para la variable activa en el gráfico del dashboard
   const [activeVariable, setActiveVariable] = useState<WeatherVariable>('temperature');
@@ -162,114 +188,89 @@ const App: React.FC = () => {
     }
   }, [detectedVariables]);
 
-  // Calcular el timestamp más reciente entre datos actuales e históricos
+  // Calcular el timestamp más reciente de los datos actuales
   const latestTimestamp = useMemo(() => {
     if (!selectedStation) return new Date().toISOString();
-
-    const timestamps: string[] = [];
-
-    // Agregar timestamp de datos actuales
-    if (selectedStation.currentData?.timestamp) {
-      timestamps.push(selectedStation.currentData.timestamp);
-    }
-
-    // Agregar timestamps del historial (últimas 24h que se muestran en el dashboard)
-    if (selectedStation.history && selectedStation.history.length > 0) {
-      selectedStation.history.forEach(d => {
-        if (d.timestamp) timestamps.push(d.timestamp);
-      });
-    }
-
-    // Retornar el más reciente
-    if (timestamps.length === 0) return selectedStation.currentData?.timestamp || new Date().toISOString();
-
-    const sorted = timestamps.sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-    return sorted[0];
-  }, [selectedStation?.currentData?.timestamp, selectedStation?.history]);
+    return selectedStation.currentData?.timestamp || new Date().toISOString();
+  }, [selectedStation?.currentData?.timestamp]);
 
   const historyStats = useMemo(() => {
-    // Usar datos optimizados con caché cuando estamos en históricos
-    const hist = activeTab === 'history' ? historicalData : (selectedStation?.history || []);
-    if (hist.length === 0) return null;
-    const values = hist.map(d => d[historyVariable]).filter(t => typeof t === 'number') as number[];
+    if (historicalData.length === 0) return null;
+    const values = historicalData.map(d => d[activeVariable]).filter(t => typeof t === 'number') as number[];
     if (values.length === 0) return null;
     return {
       avg: (values.reduce((a, b) => a + b, 0) / values.length).toFixed(2),
       max: Math.max(...values).toFixed(2),
       min: Math.min(...values).toFixed(2),
       samples: values.length,
-      unit: getVariableInfo(historyVariable).unit
+      unit: getVariableInfo(activeVariable).unit
     };
-  }, [historicalData, selectedStation?.history, historyVariable, activeTab]);
+  }, [historicalData, activeVariable]);
 
   const handleAIAnalysis = useCallback(async () => {
     if (!selectedStation) return;
     setLoadingAI(true);
     try {
-      // Usar datos optimizados con caché para análisis de históricos
-      const histData = activeTab === 'history' ? historicalData : selectedStation.history;
-      const insight = activeTab === 'history'
-        ? await analyzeHistoricalData(selectedStation.name, histData)
-        : await analyzeStationData(selectedStation);
+      const insight = await analyzeHistoricalData(selectedStation.name, historicalData);
       setAiInsight(insight);
     } catch (err) {
       console.error(err);
     } finally {
       setLoadingAI(false);
     }
-  }, [selectedStation, activeTab, historicalData]);
+  }, [selectedStation, historicalData]);
+
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center text-white">
-        <RefreshCw className="w-12 h-12 text-blue-500 animate-spin mb-6" />
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex flex-col items-center justify-center text-slate-800">
+        <RefreshCw className="w-12 h-12 text-blue-600 animate-spin mb-6" />
         <h2 className="text-2xl font-black tracking-tighter uppercase">UTPL CLIMA</h2>
-        <p className="text-slate-400 font-medium animate-pulse mt-2">Sincronizando red de estaciones...</p>
+        <p className="text-slate-600 font-medium animate-pulse mt-2">Sincronizando red de estaciones...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-[#0f172a] text-slate-100 font-inter overflow-hidden">
-      <nav className="w-full md:w-80 glass border-r border-slate-800 p-6 flex flex-col gap-8 z-20 shrink-0">
+    <div className="min-h-screen flex flex-col md:flex-row bg-gradient-to-br from-slate-50 to-blue-50 text-slate-800 font-inter overflow-hidden">
+      <nav className="w-full md:w-80 bg-white/80 backdrop-blur-xl border-r border-slate-200 p-6 flex flex-col gap-8 z-20 shrink-0 shadow-lg">
         <div className="flex items-center gap-3">
           <div className="bg-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-900/40">
             <Cloud className="w-6 h-6 text-white" />
           </div>
           <div>
             <h1 className="text-lg font-black tracking-tighter leading-none uppercase">Observatorio</h1>
-            <p className="text-[10px] text-blue-400 font-bold uppercase mt-1 tracking-widest">UTPL - Loja</p>
+            <p className="text-[10px] text-blue-600 font-bold uppercase mt-1 tracking-widest">UTPL - Loja</p>
           </div>
         </div>
 
         <div className="flex flex-col gap-2">
-          {['dashboard', 'history', 'network'].map((tab) => (
+          {['station', 'network'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
-              className={`flex items-center gap-3 px-5 py-4 rounded-2xl transition-all ${activeTab === tab ? 'bg-blue-600 text-white shadow-xl' : 'hover:bg-slate-800/60 text-slate-400'}`}
+              className={`flex items-center gap-3 px-5 py-4 rounded-2xl transition-all ${activeTab === tab ? 'bg-blue-600 text-white shadow-xl' : 'hover:bg-slate-100 text-slate-600'}`}
             >
-              {tab === 'dashboard' && <LayoutDashboard size={20} />}
-              {tab === 'history' && <History size={20} />}
+              {tab === 'station' && <LayoutDashboard size={20} />}
               {tab === 'network' && <Network size={20} />}
               <span className="font-bold text-sm uppercase tracking-tighter">
-                {tab === 'dashboard' ? 'Tiempo Real' : tab === 'history' ? 'Históricos' : 'Mapa de Red'}
+                {tab === 'station' ? 'Estaciones' : 'Mapa de Red'}
               </span>
             </button>
           ))}
         </div>
 
-        <div className="flex-1 flex flex-col min-h-0 border-t border-slate-800 pt-6">
+        <div className="flex-1 flex flex-col min-h-0 border-t border-slate-200 pt-6">
           <p className="text-[10px] uppercase font-black text-slate-500 mb-4 tracking-[0.2em] px-2 flex items-center justify-between">
             Estaciones API
-            <span className="bg-slate-800 px-2 py-0.5 rounded text-white text-[9px]">{stations.length}</span>
+            <span className="bg-blue-600 px-2 py-0.5 rounded text-white text-[9px]">{stations.length}</span>
           </p>
           <div className="flex-1 flex flex-col gap-2 overflow-y-auto pr-2 custom-scrollbar">
             {stations.map(station => (
               <button
                 key={station.id}
                 onClick={() => onSelectStation(station)}
-                className={`text-left p-4 rounded-2xl border transition-all ${selectedStation?.id === station.id ? 'border-blue-500 bg-blue-500/10' : 'border-slate-800 hover:bg-slate-800/40 text-slate-400'}`}
+                className={`text-left p-4 rounded-2xl border-2 transition-all duration-300 ${selectedStation?.id === station.id ? 'border-blue-500 bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/30' : 'border-slate-300 bg-white hover:bg-gradient-to-br hover:from-slate-50 hover:to-blue-50 text-slate-700 hover:border-blue-400 hover:shadow-md'}`}
               >
                 <div className="flex justify-between items-start mb-1">
                   <p className="text-xs font-black truncate leading-tight uppercase tracking-tight">{station.name}</p>
@@ -282,33 +283,55 @@ const App: React.FC = () => {
         </div>
       </nav>
 
-      <main className="flex-1 overflow-y-auto p-4 md:p-10 bg-[radial-gradient(circle_at_top_right,_#1e293b_0%,_#0f172a_70%)]">
-        {activeTab === 'dashboard' && selectedStation && (
-          <div className="max-w-6xl mx-auto space-y-10 animate-in fade-in duration-700">
-            <header className="flex flex-col md:flex-row md:items-center justify-between gap-8">
-              <div className="space-y-2">
-                <h2 className="text-5xl font-black tracking-tighter uppercase">{selectedStation.name}</h2>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-full">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
-                    <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">En Vivo</span>
-                  </div>
-                  <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">
-                    Actualizado: {new Date(latestTimestamp).toLocaleString()}
-                  </p>
-                </div>
+      <main className={`flex-1 flex flex-col ${activeTab === 'network' ? 'overflow-hidden' : 'overflow-y-auto'} p-4 md:p-10`}>
+        {activeTab === 'station' && selectedStation && (
+          <div className="max-w-7xl mx-auto space-y-4 animate-in fade-in duration-700">
+            {/* Header compacto en una sola línea */}
+            <header className="flex items-center justify-between gap-4">
+              {/* Título e info compacta */}
+              <div className="flex items-center gap-3">
+                <h2 className="text-2xl font-black tracking-tighter uppercase text-slate-800">
+                  {selectedStation.name}
+                </h2>
+                <span className="text-[9px] font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded-md uppercase">
+                  ID: {selectedStation.id}
+                </span>
+                <span className="text-[9px] text-slate-400 font-medium">
+                  {latestTimestamp ? new Date(latestTimestamp).toLocaleString('es-EC', {
+                    day: '2-digit',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                  }).replace('.', '') : 'Sin datos'}
+                </span>
               </div>
-              <button
-                onClick={handleAIAnalysis}
-                disabled={loadingAI}
-                className="flex items-center gap-3 bg-white text-slate-900 px-8 py-4 rounded-2xl font-black hover:scale-105 transition-all disabled:opacity-50 shadow-2xl"
-              >
-                {loadingAI ? <RefreshCw className="animate-spin" size={20} /> : <Cpu size={20} />}
-                Análisis Gemini IA
-              </button>
+
+              {/* Botones de período - compactos */}
+              <div className="flex items-center gap-2">
+                <span className="text-[9px] font-black text-orange-600 uppercase tracking-wider">Período:</span>
+                {[
+                  { value: '24h' as TimeRange, label: '24h' },
+                  { value: '3d' as TimeRange, label: '3d' },
+                  { value: '7d' as TimeRange, label: '7d' },
+                  { value: '30d' as TimeRange, label: '30d' },
+                  { value: '1y' as TimeRange, label: '1a' }
+                ].map(({ value, label }) => (
+                  <button
+                    key={value}
+                    onClick={() => handleTimeRangeChange(value)}
+                    className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all duration-300 border ${selectedTimeRange === value
+                      ? 'bg-gradient-to-r from-orange-500 to-red-500 border-orange-400 text-white shadow-md'
+                      : 'bg-white border-slate-300 text-slate-700 hover:border-orange-400 hover:bg-orange-50'
+                      }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </header>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {/* Tarjetas de datos actuales */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               {detectedVariables.map(v => {
                 const info = getVariableInfo(v);
                 const isActive = activeVariable === v;
@@ -316,7 +339,7 @@ const App: React.FC = () => {
                   <StatCard
                     key={v}
                     label={info.label}
-                    value={selectedStation.currentData[v] !== null ? selectedStation.currentData[v]!.toFixed(1) : '--'}
+                    value={selectedStation.currentData[v] !== null && selectedStation.currentData[v] !== undefined ? (selectedStation.currentData[v] as number).toFixed(1) : '--'}
                     unit={info.unit}
                     icon={info.icon}
                     colorClass={info.color}
@@ -327,212 +350,179 @@ const App: React.FC = () => {
               })}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-              <div className="lg:col-span-2 glass p-8 rounded-[2.5rem] border-slate-800/60 shadow-2xl bg-slate-900/10 min-h-[400px]">
-                {/* Lógica para obtener datos recientes */}
-                {(() => {
-                  const last24hData = selectedStation.history.filter(d => {
-                    const date = new Date(d.timestamp);
-                    const now = new Date();
-                    const timeDiff = now.getTime() - date.getTime();
-                    return timeDiff <= 24 * 60 * 60 * 1000;
-                  });
-
-                  return (
-                    <>
-                      <h3 className="text-[11px] font-black uppercase tracking-[0.25em] text-slate-500 mb-10 flex items-center gap-3 border-l-4 border-blue-600 pl-4">
-                        {getVariableInfo(activeVariable).label} (Últimas 24h)
-                      </h3>
-                      <div className="w-full h-64">
-                        {last24hData.length > 0 ? (
-                          <WeatherChart
-                            data={last24hData}
-                            dataKey={activeVariable}
-                            color="#3b82f6"
-                            label={getVariableInfo(activeVariable).label}
-                          />
-                        ) : (
-                          <div className="flex flex-col items-center justify-center h-full text-slate-500">
-                            <span className="text-3xl mb-2">zzz...</span>
-                            <p className="text-xs uppercase font-bold tracking-widest">Sin actividad reciente (24h)</p>
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-
-              <div className="glass p-8 rounded-[2.5rem] bg-indigo-950/20 border-indigo-500/20 shadow-2xl flex flex-col">
-                <div className="flex items-center gap-3 mb-8">
-                  <Cpu className="text-indigo-400" size={24} />
-                  <h3 className="text-xl font-black uppercase tracking-tight">IA Insight</h3>
-                </div>
-                {aiInsight ? (
-                  <div className="space-y-6 flex-1">
-                    <p className="text-sm text-slate-300 leading-relaxed font-medium italic">"{aiInsight.summary}"</p>
-                    <div className="space-y-4">
-                      <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Recomendaciones</p>
-                      {aiInsight.recommendations.map((r, i) => (
-                        <div key={i} className="flex gap-3 text-xs text-slate-400 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
-                          <ChevronRight size={14} className="text-indigo-500 shrink-0" />
-                          <span className="leading-tight">{r}</span>
-                        </div>
-                      ))}
-                    </div>
+            {/* Gráfico principal - Optimizado */}
+            <div className="bg-white/90 p-4 rounded-2xl border border-slate-200 shadow-md">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-600 flex items-center gap-2">
+                  <div className="w-1 h-4 bg-blue-500 rounded-full"></div>
+                  {getVariableInfo(activeVariable).label}
+                </h3>
+                {loadingHistory && (
+                  <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                    <RefreshCw className="animate-spin" size={12} />
+                    <span>Cargando...</span>
                   </div>
+                )}
+              </div>
+              <div className="w-full h-96">
+                {historicalData.length > 0 ? (
+                  activeVariable === 'rainfall' ? (
+                    <RainfallChart
+                      key={`${selectedTimeRange}-${activeVariable}`}
+                      data={historicalData}
+                      dataKey={activeVariable}
+                      color="#3b82f6"
+                      label={getVariableInfo(activeVariable).label}
+                      unit={getVariableInfo(activeVariable).unit}
+                    />
+                  ) : (
+                    <WeatherChart
+                      key={`${selectedTimeRange}-${activeVariable}`}
+                      data={historicalData}
+                      dataKey={activeVariable}
+                      color="#3b82f6"
+                      label={getVariableInfo(activeVariable).label}
+                      unit={getVariableInfo(activeVariable).unit}
+                    />
+                  )
                 ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center opacity-30">
-                    <Search size={48} className="text-slate-700 mb-4" />
-                    <p className="text-[10px] font-black uppercase tracking-widest">Esperando diagnóstico...</p>
+                  <div className="flex flex-col items-center justify-center h-full text-slate-500 opacity-60">
+                    <span className="text-5xl mb-4">📊</span>
+                    <p className="text-xs uppercase font-bold tracking-widest text-center">
+                      No hay datos disponibles para este período
+                    </p>
                   </div>
                 )}
               </div>
             </div>
-          </div>
-        )}
 
-        {activeTab === 'history' && selectedStation && (
-          <div className="max-w-6xl mx-auto space-y-10 animate-in slide-in-from-bottom-4 duration-700">
-            <header className="flex flex-col md:flex-row md:items-center justify-between gap-8">
-              <div className="space-y-2">
-                <h2 className="text-5xl font-black tracking-tighter flex items-center gap-4 uppercase">
-                  <History className="text-emerald-500" /> Históricos
-                </h2>
-                <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">
-                  Estación: <span className="text-emerald-400">{selectedStation.name}</span>
-                </p>
-              </div>
-              <div className="flex gap-4">
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-sm font-bold focus:border-emerald-500 outline-none"
-                />
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-sm font-bold focus:border-emerald-500 outline-none"
-                />
-              </div>
-            </header>
-
-            <div className="glass p-8 rounded-[3rem] border-emerald-500/10 bg-slate-900/10 min-h-[500px]">
-              <div className="flex flex-wrap gap-2 mb-10">
-                {detectedVariables.map(v => (
-                  <button
-                    key={v}
-                    onClick={() => setHistoryVariable(v)}
-                    className={`px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${historyVariable === v ? 'bg-emerald-600 border-emerald-400 text-white' : 'bg-slate-900/60 border-slate-800 text-slate-500'}`}
-                  >
-                    {getVariableInfo(v).label}
-                  </button>
-                ))}
-              </div>
-
-              {loadingHistory ? (
-                <div className="h-64 flex flex-col items-center justify-center opacity-40">
-                  <RefreshCw className="animate-spin mb-4" />
-                  <p className="text-[10px] font-black uppercase tracking-widest">Consultando registros...</p>
-                </div>
-              ) : (
-                <div className="w-full h-80">
-                  <WeatherChart
-                    data={historicalData}
-                    dataKey={historyVariable}
-                    color="#10b981"
-                    label={getVariableInfo(historyVariable).label}
-                  />
-                </div>
+            {/* Estadísticas y AI Insight */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+              {/* Estadísticas */}
+              {historyStats && (
+                <>
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-xl border border-blue-200 shadow-sm">
+                    <p className="text-[9px] font-black text-blue-600 uppercase mb-1 tracking-wider">Promedio</p>
+                    <p className="text-2xl font-black text-blue-600">{historyStats.avg} <span className="text-sm text-slate-500">{historyStats.unit}</span></p>
+                  </div>
+                  <div className="bg-gradient-to-br from-orange-50 to-red-50 p-4 rounded-xl border border-orange-200 shadow-sm">
+                    <p className="text-[9px] font-black text-orange-600 uppercase mb-1 tracking-wider">Máximo</p>
+                    <p className="text-2xl font-black text-orange-600">{historyStats.max} <span className="text-sm text-slate-500">{historyStats.unit}</span></p>
+                  </div>
+                  <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-4 rounded-xl border border-slate-300 shadow-sm">
+                    <p className="text-[9px] font-black text-slate-600 uppercase mb-1 tracking-wider">Muestras</p>
+                    <p className="text-2xl font-black text-slate-700">{historyStats.samples}</p>
+                  </div>
+                </>
               )}
             </div>
 
-            {historyStats && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="glass p-6 rounded-3xl border-slate-800/60">
-                  <p className="text-[10px] font-black text-slate-500 uppercase mb-2">Promedio Periodo</p>
-                  <p className="text-3xl font-black">{historyStats.avg} {historyStats.unit}</p>
+            {/* AI Insight - OCULTO */}
+            {/* {aiInsight && (
+              <div className="glass p-8 rounded-[2.5rem] bg-indigo-950/20 border-indigo-500/20 shadow-2xl">
+                <div className="flex items-center gap-3 mb-6">
+                  <Cpu className="text-indigo-400" size={24} />
+                  <h3 className="text-xl font-black uppercase tracking-tight">Análisis IA</h3>
                 </div>
-                <div className="glass p-6 rounded-3xl border-emerald-500/20 bg-emerald-500/5">
-                  <p className="text-[10px] font-black text-emerald-500 uppercase mb-2">Valor Máximo</p>
-                  <p className="text-3xl font-black text-emerald-400">{historyStats.max} {historyStats.unit}</p>
-                </div>
-                <div className="glass p-6 rounded-3xl border-slate-800/60">
-                  <p className="text-[10px] font-black text-slate-500 uppercase mb-2">Total Muestras</p>
-                  <p className="text-3xl font-black text-slate-400">{historyStats.samples}</p>
+                <div className="space-y-6">
+                  <p className="text-sm text-slate-300 leading-relaxed font-medium italic">"{aiInsight.summary}"</p>
+                  <div className="space-y-3">
+                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Recomendaciones</p>
+                    {aiInsight.recommendations.map((r, i) => (
+                      <div key={i} className="flex gap-3 text-xs text-slate-400 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                        <ChevronRight size={14} className="text-indigo-500 shrink-0 mt-0.5" />
+                        <span className="leading-relaxed">{r}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-            )}
+            )} */}
           </div>
         )}
 
+
         {activeTab === 'network' && (
-          <div className="h-full flex flex-col space-y-10 animate-in fade-in duration-700">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
-              <div className="space-y-2">
-                <h2 className="text-5xl font-black tracking-tighter uppercase">Red Global</h2>
-                <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Nodos Activos: {stations.length}</p>
+          <div className="flex-1 flex flex-col min-h-0 animate-in fade-in duration-700">
+            {/* Header compacto en una sola línea */}
+            <div className="flex items-center justify-between gap-4 mb-3">
+              {/* Título compacto */}
+              <div className="flex items-center gap-4">
+                <h2 className="text-2xl font-black tracking-tighter uppercase text-slate-800">Red Global</h2>
+                <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">{stations.length} Nodos</span>
               </div>
-              <div className="flex bg-slate-900/80 border border-slate-800 rounded-2xl p-1">
-                <button
-                  onClick={() => setNetworkSubView('list')}
-                  className={`px-6 py-2 rounded-xl text-xs font-black uppercase transition-all ${networkSubView === 'list' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}
-                >
-                  Lista
-                </button>
-                <button
-                  onClick={() => setNetworkSubView('map')}
-                  className={`px-6 py-2 rounded-xl text-xs font-black uppercase transition-all ${networkSubView === 'map' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}
-                >
-                  Mapa
-                </button>
+
+              {/* Controles en línea */}
+              <div className="flex items-center gap-3">
+                {/* Botones de variables - compactos */}
+                <div className="flex gap-2">
+                  {['temperature', 'rainfall', 'windSpeed', 'humidity', 'pressure', 'pm25'].map(v => (
+                    <button
+                      key={v}
+                      onClick={() => setNetworkVariable(v as WeatherVariable)}
+                      className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all duration-300 ${networkVariable === v
+                        ? 'bg-gradient-to-r from-indigo-600 to-blue-600 border-indigo-500 text-white shadow-md'
+                        : 'bg-white border-slate-300 text-slate-600 hover:border-blue-400 hover:shadow-sm'
+                        }`}
+                      title={getVariableInfo(v).label}
+                    >
+                      {getVariableInfo(v).label.split(' ')[0]}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Toggle Lista/Mapa - compacto */}
+                <div className="flex bg-white border border-slate-300 rounded-lg p-0.5 shadow-sm">
+                  <button
+                    onClick={() => setNetworkSubView('list')}
+                    className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${networkSubView === 'list' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                  >
+                    Lista
+                  </button>
+                  <button
+                    onClick={() => setNetworkSubView('map')}
+                    className={`px-4 py-1.5 rounded-md text-[9px] font-black uppercase transition-all ${networkSubView === 'map' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                  >
+                    Mapa
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="flex-1 min-h-[400px]">
+            {/* Contenido principal - Mapa o Lista */}
+            <div className="flex-1 min-h-0">
               {networkSubView === 'map' ? (
                 <StationMap
                   stations={stations}
                   variable={networkVariable}
                   unit={getVariableInfo(networkVariable).unit}
-                  onStationSelect={(s) => { onSelectStation(s); setActiveTab('dashboard'); }}
+                  onStationSelect={(s) => { onSelectStation(s); setActiveTab('station'); }}
                 />
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {stations.map(s => (
-                    <div
-                      key={s.id}
-                      onClick={() => { onSelectStation(s); setActiveTab('dashboard'); }}
-                      className="glass p-6 rounded-[2rem] cursor-pointer hover:border-blue-500/50 transition-all bg-slate-900/10 group"
-                    >
-                      <div className="flex justify-between items-start mb-6">
-                        <p className="font-black text-xs uppercase tracking-tight truncate w-3/4">{s.name}</p>
-                        <div className={`w-1.5 h-1.5 rounded-full ${s.status === 'online' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                <div className="h-full overflow-y-auto">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {stations.map(s => (
+                      <div
+                        key={s.id}
+                        onClick={() => { onSelectStation(s); setActiveTab('station'); }}
+                        className="bg-white/80 p-6 rounded-[2rem] cursor-pointer hover:border-blue-500/50 transition-all border border-slate-200 shadow-sm group"
+                      >
+                        <div className="flex justify-between items-start mb-6">
+                          <p className="font-black text-xs uppercase tracking-tight truncate w-3/4">{s.name}</p>
+                          <div className={`w-1.5 h-1.5 rounded-full ${s.status === 'online' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-4xl font-black">{s.currentData[networkVariable]?.toFixed(1) || '--'}</span>
+                          <span className="text-slate-500 text-xs font-bold">{getVariableInfo(networkVariable).unit}</span>
+                        </div>
+                        <p className="mt-4 text-[9px] font-black text-slate-600 uppercase tracking-widest group-hover:text-blue-500 transition-colors">Ver Detalles →</p>
                       </div>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-4xl font-black">{s.currentData[networkVariable]?.toFixed(1) || '--'}</span>
-                        <span className="text-slate-500 text-xs font-bold">{getVariableInfo(networkVariable).unit}</span>
-                      </div>
-                      <p className="mt-4 text-[9px] font-black text-slate-600 uppercase tracking-widest group-hover:text-blue-500 transition-colors">Ver Detalles →</p>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               )}
-            </div>
-
-            <div className="flex gap-4 pb-12 overflow-x-auto">
-              {['temperature', 'rainfall', 'windSpeed', 'humidity', 'pressure', 'pm25'].map(v => (
-                <button
-                  key={v}
-                  onClick={() => setNetworkVariable(v as WeatherVariable)}
-                  className={`whitespace-nowrap px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all ${networkVariable === v ? 'bg-indigo-600 border-indigo-400 text-white' : 'bg-slate-900 border-slate-800 text-slate-500'}`}
-                >
-                  {getVariableInfo(v).label}
-                </button>
-              ))}
             </div>
           </div>
         )}
