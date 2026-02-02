@@ -2,7 +2,8 @@
 import { Station, WeatherData } from '../types';
 import { MOCK_STATIONS } from '../constants';
 
-const API_BASE_URL = 'http://localhost:8002';
+//const API_BASE_URL = 'http://localhost:8002';
+const API_BASE_URL = 'https://protectorless-florentina-matrimonially.ngrok-free.dev';
 
 const parseDate = (dateStr: any): string => {
   if (!dateStr) return new Date().toISOString();
