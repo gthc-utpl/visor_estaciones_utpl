@@ -114,11 +114,10 @@ const App: React.FC = () => {
 
   const getVariableInfo = (v: string) => variableConfig[v] || { label: v, unit: '', icon: <Activity size={18} />, color: 'bg-slate-800 text-slate-400' };
 
-  const onSelectStation = async (station: Station) => {
+  const onSelectStation = async (station: Station, switchTab = true) => {
     setSelectedStation({ ...station, history: [] });
     setAiInsight(null);
-    setActiveTab('station'); // Cambiar a vista de estación
-
+    if (switchTab) setActiveTab('station'); // Cambiar a vista de estación solo si se solicita
 
     try {
       // Solo traer datos actuales, los históricos se manejan con useWeatherHistory
@@ -153,7 +152,7 @@ const App: React.FC = () => {
         const data = await fetchStations();
         if (data && data.length > 0) {
           setStations(data);
-          onSelectStation(data[0]);
+          onSelectStation(data[0], false); // No cambiar pestaña al inicio
         }
       } catch (err) {
         console.error("Init failed", err);
@@ -245,7 +244,7 @@ const App: React.FC = () => {
         </div>
 
         <div className="flex flex-col gap-2">
-          {['station', 'network'].map((tab) => (
+          {['network', 'station'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab as any)}
@@ -262,7 +261,7 @@ const App: React.FC = () => {
 
         <div className="flex-1 flex flex-col min-h-0 border-t border-slate-200 pt-6">
           <p className="text-[10px] uppercase font-black text-slate-500 mb-4 tracking-[0.2em] px-2 flex items-center justify-between">
-            Estaciones API
+            Estaciones
             <span className="bg-blue-600 px-2 py-0.5 rounded text-white text-[9px]">{stations.length}</span>
           </p>
           <div className="flex-1 flex flex-col gap-2 overflow-y-auto pr-2 custom-scrollbar">
