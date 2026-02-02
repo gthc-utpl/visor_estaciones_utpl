@@ -1,13 +1,24 @@
-
 import { Station, WeatherData } from '../types';
 import { MOCK_STATIONS } from '../constants';
 
-//const API_BASE_URL = 'http://localhost:8002';
-const API_BASE_URL = 'https://protectorless-florentina-matrimonially.ngrok-free.dev';
+// --- 1. CONFIGURACIÓN DE URL Y HEADERS ---
+
+// Usa la variable de entorno definida en .env.local (local) o en Vercel (nube).
+// Si no existe, usa cadena vacía (asume mismo dominio) o pon tu URL de ngrok como fallback final.
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://protectorless-florentina-matrimonially.ngrok-free.dev';
+
+// ESTO ES CRÍTICO: "ngrok-skip-browser-warning" evita que Ngrok devuelva HTML de advertencia.
+const API_HEADERS = {
+  "ngrok-skip-browser-warning": "true",
+  "Content-Type": "application/json"
+};
+
+// --- 2. HELPERS DE PARSEO ---
 
 const parseDate = (dateStr: any): string => {
   if (!dateStr) return new Date().toISOString();
   let s = String(dateStr).trim();
+  // Corrige formatos que a veces vienen con espacio en vez de T
   const d = new Date(s.includes('T') ? s : s.replace(' ', 'T'));
   return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 };
@@ -27,7 +38,7 @@ const mapApiToWeatherData = (rawData: any): WeatherData => {
 
   return {
     timestamp: parseDate(ts),
-    // API v2.1 nombres normalizados (prioridad) + fallbacks para compatibilidad
+    // Mapeo robusto: API v2.1 (prioridad) + fallbacks v1.0
     temperature: parse(rawData.temp_aire ?? rawData.temp_exterior ?? rawData.temperatura),
     humidity: parse(rawData.hum_relativa ?? rawData.hum_exterior ?? rawData.humedad),
     pressure: parse(rawData.presion_bar ?? rawData.presion),
@@ -42,20 +53,23 @@ const mapApiToWeatherData = (rawData: any): WeatherData => {
   };
 };
 
+// --- 3. FUNCIONES DE FETCH (CON HEADERS) ---
+
 export const fetchStations = async (): Promise<Station[]> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/estaciones`);
+    // Agregamos { headers: API_HEADERS } para pasar el bloqueo de Ngrok
+    const response = await fetch(`${API_BASE_URL}/estaciones`, { headers: API_HEADERS });
+    
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const apiData = await response.json();
     const stationsRaw = Array.isArray(apiData) ? apiData : [];
 
-    // Combinar datos de la API con nuestra lista maestra de coordenadas
+    // Combinar datos de la API con nuestra lista maestra de coordenadas (MOCK)
     return MOCK_STATIONS.map(masterStation => {
       const apiInfo = stationsRaw.find((s: any) => (s.station_id || s.id)?.toString() === masterStation.id);
       return {
         ...masterStation,
         name: apiInfo?.nombre_estacion || masterStation.name,
-        // Mantener las coordenadas maestras si la API falla o devuelve nulos
         location: {
           ...masterStation.location,
           lat: parseFloat(apiInfo?.latitud || masterStation.location.lat),
@@ -72,7 +86,8 @@ export const fetchStations = async (): Promise<Station[]> => {
 
 export const fetchActualClima = async (stationId: string): Promise<WeatherData> => {
   try {
-    const response = await fetch(`${API_BASE_URL}/clima/actual?station_id=${stationId}`);
+    const response = await fetch(`${API_BASE_URL}/clima/actual?station_id=${stationId}`, { headers: API_HEADERS });
+    
     if (!response.ok) throw new Error('Error fetch actual');
     const data = await response.json();
 
@@ -95,12 +110,16 @@ export const fetchClimaRango = async (stationId: string, inicio: string, fin: st
     const startTime = performance.now();
 
     // API v2.1 usa /clima/historico/{station_id}
-    const response = await fetch(`${API_BASE_URL}/clima/historico/${stationId}?inicio=${inicio}&fin=${fin}`);
+    const response = await fetch(
+      `${API_BASE_URL}/clima/historico/${stationId}?inicio=${inicio}&fin=${fin}`, 
+      { headers: API_HEADERS }
+    );
+
     if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
     const data = await response.json();
     if (!Array.isArray(data)) return [];
 
-    // La API v2.1 ya retorna datos ordenados descendentemente, mapear directamente
+    // La API v2.1 ya retorna datos ordenados descendentemente
     const mappedData = data
       .map(mapApiToWeatherData)
       .filter(d => d.timestamp !== null);
