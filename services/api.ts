@@ -3,12 +3,11 @@ import { MOCK_STATIONS } from '../constants';
 
 // --- 1. CONFIGURACIÓN DE URL Y HEADERS ---
 
-// Usa la variable de entorno VITE_API_URL.
 // En local (Development) forzamos el uso del proxy '/api' para evitar CORS.
-// En producción (Vercel) usamos la variable de entorno.
+// En producción (Vercel) usamos la variable de entorno VITE_API_URL.
 const API_BASE_URL = (import.meta as any).env?.DEV ? '/api' : ((import.meta as any).env?.VITE_API_URL || 'https://protectorless-florentina-matrimonially.ngrok-free.dev');
 
-// ESTO ES CRÍTICO: "ngrok-skip-browser-warning" evita que Ngrok devuelva HTML de advertencia.
+// "ngrok-skip-browser-warning" evita que Ngrok devuelva HTML de advertencia.
 const API_HEADERS = {
   "ngrok-skip-browser-warning": "true",
   "Content-Type": "application/json"
@@ -19,11 +18,14 @@ const API_HEADERS = {
 const parseDate = (dateStr: any): string => {
   if (!dateStr) return new Date().toISOString();
   let s = String(dateStr).trim();
-  // Corrige formatos que a veces vienen con espacio en vez de T
   const d = new Date(s.includes('T') ? s : s.replace(' ', 'T'));
   return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
 };
 
+/**
+ * Mapea datos crudos de la API v3.0 a nuestro formato interno WeatherData.
+ * Soporta múltiples resoluciones: 15min, horario y diario.
+ */
 const mapApiToWeatherData = (rawData: any): WeatherData => {
   if (!rawData) return { timestamp: new Date().toISOString() };
 
@@ -34,13 +36,12 @@ const mapApiToWeatherData = (rawData: any): WeatherData => {
     return isNaN(n) ? null : n;
   };
 
-  // API v2.1 usa 'fecha_loja' como timestamp principal. 
-  // En reportes diarios, puede venir como 'dia'.
-  const ts = rawData.fecha_loja || rawData.dia || rawData.timestamp || new Date().toISOString();
+  // API v3.0: 'fecha_loja' (15min/horario), 'dia' (diario), 'hora' (aire)
+  const ts = rawData.fecha_loja || rawData.dia || rawData.hora || rawData.timestamp || new Date().toISOString();
 
   return {
     timestamp: parseDate(ts),
-    // Mapeo robusto: API v2.1 (prioridad) + fallbacks v1.0 + fallbacks de Agregados
+    // Mapeo robusto: API v3.0 (prioridad) + fallbacks anteriores
     temperature: parse(rawData.temp_aire ?? rawData.temp_promedio ?? rawData.temp_exterior ?? rawData.temperatura),
     humidity: parse(rawData.hum_relativa ?? rawData.hum_relativa_promedio ?? rawData.hum_exterior ?? rawData.humedad),
     pressure: parse(rawData.presion_bar ?? rawData.presion_promedio ?? rawData.presion),
@@ -55,11 +56,10 @@ const mapApiToWeatherData = (rawData: any): WeatherData => {
   };
 };
 
-// --- 3. FUNCIONES DE FETCH (CON HEADERS) ---
+// --- 3. FUNCIONES DE FETCH ---
 
 export const fetchStations = async (): Promise<Station[]> => {
   try {
-    // Agregamos { headers: API_HEADERS } para pasar el bloqueo de Ngrok
     const response = await fetch(`${API_BASE_URL}/estaciones`, { headers: API_HEADERS });
 
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -93,7 +93,7 @@ export const fetchActualClima = async (stationId: string): Promise<WeatherData> 
     if (!response.ok) throw new Error('Error fetch actual');
     const data = await response.json();
 
-    // API v2.1: /clima/actual siempre retorna array, tomar primer elemento
+    // API v3.0: /clima/actual siempre retorna array, tomar primer elemento
     if (Array.isArray(data) && data.length > 0) {
       return mapApiToWeatherData(data[0]);
     }
@@ -105,6 +105,16 @@ export const fetchActualClima = async (stationId: string): Promise<WeatherData> 
   }
 };
 
+/**
+ * Fetch datos históricos con selección inteligente de resolución (API v3.0).
+ * 
+ * La API selecciona automáticamente la resolución:
+ * - ≤ 3 días → Resolución 15 minutos
+ * - 4-30 días → Resolución horaria
+ * - > 30 días → Resolución diaria
+ * 
+ * La respuesta viene envuelta: { resolucion, registros, datos: [...] }
+ */
 export const fetchClimaRango = async (stationId: string, inicio: string, fin: string): Promise<WeatherData[]> => {
   try {
     if (!inicio || !fin) return [];
@@ -123,28 +133,106 @@ export const fetchClimaRango = async (stationId: string, inicio: string, fin: st
     if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
     const rawData = await response.json();
 
-    // Soporte para respuestas envueltas (data, results) o array directo
-    const data = Array.isArray(rawData) ? rawData : (rawData.data || rawData.results || []);
+    // API v3.0: Respuesta envuelta con { resolucion, registros, datos }
+    // También soporta respuestas v2 (array directo) y otros formatos
+    let data: any[];
+    let resolucion = 'desconocida';
 
-    if (!Array.isArray(data)) {
+    if (rawData && rawData.datos && Array.isArray(rawData.datos)) {
+      // API v3.0 format: { resolucion, registros, datos: [...] }
+      data = rawData.datos;
+      resolucion = rawData.resolucion || 'auto';
+      console.log(`📊 API v3.0 - Resolución: ${resolucion}, Registros reportados: ${rawData.registros}`);
+    } else if (Array.isArray(rawData)) {
+      // Legacy: array directo
+      data = rawData;
+      resolucion = 'legacy';
+    } else if (rawData.data || rawData.results) {
+      // Otro formato envuelto
+      data = rawData.data || rawData.results || [];
+      resolucion = 'wrapped';
+    } else {
       console.warn('⚠️ Unexpected history structure:', rawData);
       return [];
     }
 
-    // La API v2.1 ya retorna datos ordenados descendentemente
+    if (!Array.isArray(data)) {
+      console.warn('⚠️ Data is not an array:', data);
+      return [];
+    }
+
     const mappedData = data
       .map(mapApiToWeatherData)
       .filter(d => d.timestamp !== null);
 
     const endTime = performance.now();
-    console.log(`⚡ Fetched ${mappedData.length} records in ${(endTime - startTime).toFixed(2)}ms for station ${stationId}`);
-    console.log(`📋 Data sample - Raw[0]:`, data[0]);
-    console.log(`📋 Data sample - Mapped[0]:`, mappedData[0]);
-    console.log(`📋 Data sample - Mapped[last]:`, mappedData[mappedData.length - 1]);
+    console.log(`⚡ [${resolucion}] Fetched ${mappedData.length} records in ${(endTime - startTime).toFixed(0)}ms for station ${stationId}`);
+
+    if (mappedData.length > 0) {
+      console.log(`📋 First: ${mappedData[0].timestamp} | Last: ${mappedData[mappedData.length - 1].timestamp}`);
+    }
 
     return mappedData;
   } catch (error) {
     console.error("fetchClimaRango error:", error);
+    return [];
+  }
+};
+
+/**
+ * Fetch lluvia detallada cada 15 minutos (API v3.0 endpoint especializado)
+ */
+export const fetchLluvia = async (stationId: string, inicio: string, fin: string): Promise<WeatherData[]> => {
+  try {
+    const startStr = inicio.substring(0, 10);
+    const endStr = fin.substring(0, 10);
+    const url = `${API_BASE_URL}/clima/lluvia/${stationId}?inicio=${startStr}&fin=${endStr}`;
+
+    const response = await fetch(url, { headers: API_HEADERS });
+    if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+
+    const rawData = await response.json();
+    const data = Array.isArray(rawData) ? rawData : [];
+
+    return data.map(mapApiToWeatherData).filter(d => d.timestamp !== null);
+  } catch (error) {
+    console.error("fetchLluvia error:", error);
+    return [];
+  }
+};
+
+/**
+ * Fetch calidad de aire PM2.5/PM10 por hora (API v3.0 endpoint especializado)
+ */
+export const fetchAire = async (stationId: string, horas: number = 24): Promise<any[]> => {
+  try {
+    const url = `${API_BASE_URL}/clima/aire/${stationId}?horas=${horas}`;
+
+    const response = await fetch(url, { headers: API_HEADERS });
+    if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error("fetchAire error:", error);
+    return [];
+  }
+};
+
+/**
+ * Fetch sensores disponibles por estación (API v3.0)
+ */
+export const fetchSensores = async (stationId: string): Promise<any[]> => {
+  try {
+    const url = `${API_BASE_URL}/estaciones/${stationId}/sensores`;
+
+    const response = await fetch(url, { headers: API_HEADERS });
+    if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error("fetchSensores error:", error);
     return [];
   }
 };

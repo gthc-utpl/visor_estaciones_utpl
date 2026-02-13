@@ -101,9 +101,58 @@ const WeatherChart: React.FC<WeatherChartProps> = ({
   }
 
   const values = chartData.map(d => d.value).filter(v => typeof v === 'number') as number[];
-  const minVal = values.length ? Math.min(...values) : 0;
-  const maxVal = values.length ? Math.max(...values) : 10;
-  const margin = (maxVal - minVal) * 0.15 || 2;
+  const rawMin = values.length ? Math.min(...values) : 0;
+  const rawMax = values.length ? Math.max(...values) : 10;
+  const rawRange = rawMax - rawMin;
+
+  // Smart Y-axis domain calculation
+  // 1. Ensure a minimum visible range so flat data doesn't look microscopic
+  // 2. Round to "nice" numbers for clean tick labels
+  // 3. Handle special cases (rainfall always starts at 0)
+
+  const getNiceStep = (range: number): number => {
+    if (range <= 0.5) return 0.1;
+    if (range <= 1) return 0.2;
+    if (range <= 2) return 0.5;
+    if (range <= 5) return 1;
+    if (range <= 10) return 2;
+    if (range <= 20) return 5;
+    if (range <= 50) return 10;
+    if (range <= 100) return 20;
+    if (range <= 200) return 50;
+    return Math.ceil(range / 5 / 10) * 10;
+  };
+
+  // Minimum range per variable type to avoid overly zoomed-in charts
+  const isRainfall = chartType === 'bar';
+  const minRange = isRainfall ? Math.max(1, rawMax * 0.2) : Math.max(2, rawRange * 0.5);
+  const effectiveRange = Math.max(rawRange, minRange);
+  const padding = effectiveRange * 0.15;
+
+  const step = getNiceStep(effectiveRange + padding * 2);
+
+  let domainMin: number;
+  let domainMax: number;
+
+  if (isRainfall) {
+    // Rainfall: always start at 0
+    domainMin = 0;
+    domainMax = Math.ceil((rawMax + padding) / step) * step;
+    if (domainMax <= 0) domainMax = step;
+  } else {
+    // Other variables: center around data with nice rounded bounds
+    domainMin = Math.floor((rawMin - padding) / step) * step;
+    domainMax = Math.ceil((rawMax + padding) / step) * step;
+    // Ensure at least 2 steps of range
+    if (domainMax - domainMin < step * 2) {
+      const mid = (rawMin + rawMax) / 2;
+      domainMin = Math.floor((mid - step) / step) * step;
+      domainMax = domainMin + step * 4;
+    }
+  }
+
+  // Determine decimal places for tick formatting
+  const tickDecimals = step < 1 ? 1 : 0;
 
   const formatXAxis = (unixTime: number) => {
     if (chartData.length === 0) return '';
@@ -175,9 +224,10 @@ const WeatherChart: React.FC<WeatherChartProps> = ({
               fontSize={9}
               tickLine={false}
               axisLine={false}
-              width={40}
-              domain={[0, maxVal + margin]}
-              tickFormatter={(v) => `${v.toFixed(1)}${unit ? ' ' + unit : ''}`}
+              width={50}
+              domain={[domainMin, domainMax]}
+              tickFormatter={(v) => `${v.toFixed(tickDecimals)}${unit ? ' ' + unit : ''}`}
+              tickCount={6}
             />
 
             <Tooltip
@@ -242,9 +292,10 @@ const WeatherChart: React.FC<WeatherChartProps> = ({
               fontSize={9}
               tickLine={false}
               axisLine={false}
-              width={40}
-              domain={[minVal - margin, maxVal + margin]}
-              tickFormatter={(v) => `${v.toFixed(1)}${unit ? ' ' + unit : ''}`}
+              width={50}
+              domain={[domainMin, domainMax]}
+              tickFormatter={(v) => `${v.toFixed(tickDecimals)}${unit ? ' ' + unit : ''}`}
+              tickCount={6}
             />
 
             <Tooltip
