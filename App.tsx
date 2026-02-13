@@ -64,9 +64,9 @@ const variableConfig: Record<string, { label: string, unit: string, icon: React.
     icon: <Globe className="w-5 h-5" />,
     color: 'from-slate-500 to-slate-700'
   },
-  rain: {
+  rainfall: {
     label: 'Lluvia (Int)',
-    unit: 'mm/h',
+    unit: 'mm',
     icon: <Cloud className="w-5 h-5" />,
     color: 'from-blue-600 to-blue-800'
   },
@@ -171,7 +171,7 @@ const App: React.FC = () => {
               lastUpdate: weather?.timestamp || new Date().toISOString(),
               currentData: weather || {},
               history: [],
-              supportedVariables: ['temperature', 'humidity', 'windSpeed', 'rain', 'pressure']
+              supportedVariables: ['temperature', 'humidity', 'windSpeed', 'rainfall', 'pressure']
             } as Station;
           } catch (e) {
             return {
@@ -180,7 +180,7 @@ const App: React.FC = () => {
               lastUpdate: new Date().toISOString(),
               currentData: null,
               history: [],
-              supportedVariables: ['temperature', 'humidity', 'windSpeed', 'rain', 'pressure']
+              supportedVariables: ['temperature', 'humidity', 'windSpeed', 'rainfall', 'pressure']
             } as Station;
           }
         })
@@ -345,7 +345,7 @@ const App: React.FC = () => {
         {/* Variable Selector (Floating Pills) */}
         {!selectedStation && (
           <div className="pointer-events-auto bg-white/95 backdrop-blur-md shadow-xl rounded-full p-1.5 border border-slate-200 flex gap-1 transform transition-all hover:scale-105">
-            {['temperature', 'rain', 'windSpeed', 'humidity'].map(v => (
+            {['temperature', 'rainfall', 'windSpeed', 'humidity'].map(v => (
               <button
                 key={v}
                 onClick={() => setNetworkVariable(v)}
