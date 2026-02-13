@@ -9,6 +9,10 @@ interface StationMapProps {
   variable: WeatherVariable;
   unit: string;
   onStationSelect: (station: Station) => void;
+  selectedStation?: Station | null;
+  heatmapMode?: boolean;
+  activeVariable?: string;
+  tileLayer?: 'light' | 'dark' | 'satellite';
 }
 
 interface RangeConfig {
@@ -19,10 +23,20 @@ interface RangeConfig {
   shadow: string;
 }
 
-const StationMap: React.FC<StationMapProps> = ({ stations, variable, unit, onStationSelect }) => {
+const StationMap: React.FC<StationMapProps> = ({
+  stations,
+  variable,
+  unit,
+  onStationSelect,
+  selectedStation,
+  tileLayer = 'light'
+}) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const [currentZoom, setCurrentZoom] = React.useState(8);
+  const initialBoundsSetRef = useRef(false); // Track if initial bounds have been set
 
   // Configuración de rangos meteorológicos estándar
   const variableRanges = useMemo((): RangeConfig[] => {
@@ -85,18 +99,23 @@ const StationMap: React.FC<StationMapProps> = ({ stations, variable, unit, onSta
 
     mapRef.current = L.map(mapContainerRef.current, {
       center: [-3.99, -79.20],
-      zoom: 12,
+      zoom: 8,
       zoomControl: false,
-      attributionControl: true
+      attributionControl: false // Limpiamos controles default para UI minimalista
     });
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; CARTO',
-      subdomains: 'abcd',
-      maxZoom: 20
-    }).addTo(mapRef.current);
+    // Inicialización del layer vacío, se llenará en el efecto de abajo
+    tileLayerRef.current = L.tileLayer('', { maxZoom: 20 }).addTo(mapRef.current);
 
-    L.control.zoom({ position: 'bottomright' }).addTo(mapRef.current);
+    // Listen to zoom changes
+    mapRef.current.on('zoomend', () => {
+      if (mapRef.current) {
+        setCurrentZoom(mapRef.current.getZoom());
+      }
+    });
+
+    // Set initial zoom
+    setCurrentZoom(8);
 
     return () => {
       if (mapRef.current) {
@@ -106,36 +125,80 @@ const StationMap: React.FC<StationMapProps> = ({ stations, variable, unit, onSta
     };
   }, []);
 
+  // Efecto para gestionar el cambio de TileLayer dinámicamente
+  useEffect(() => {
+    if (!tileLayerRef.current) return;
+
+    let url = '';
+    let attribution = '';
+
+    switch (tileLayer) {
+      case 'dark':
+        url = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+        attribution = '&copy; CARTO';
+        break;
+      case 'satellite':
+        url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+        attribution = '&copy; Esri';
+        break;
+      case 'light':
+      default:
+        url = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+        attribution = '&copy; CARTO';
+        break;
+    }
+
+    tileLayerRef.current.setUrl(url);
+  }, [tileLayer]);
+
+  // Fly to selected station when clicked from list
+  useEffect(() => {
+    if (!mapRef.current || !selectedStation) return;
+    mapRef.current.flyTo([selectedStation.location.lat, selectedStation.location.lng], 13, {
+      animate: true,
+      duration: 1.2
+    });
+  }, [selectedStation]);
+
   useEffect(() => {
     if (!mapRef.current || stations.length === 0) return;
 
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
+    // Filter stations based on zoom level
+    // Zoom levels: 0-7 (world/country), 8-10 (region), 11-13 (city), 14+ (street)
+    const filteredStations = stations.filter((station, index) => {
+      if (currentZoom >= 11) return true; // Show all at city/street level
+      if (currentZoom >= 9) return index % 2 === 0; // Show 50% at region level
+      return index % 4 === 0; // Show 25% at country level
+    });
+
     const group = L.featureGroup();
 
-    stations.forEach(station => {
+    filteredStations.forEach(station => {
       const val = station.currentData[variable] as number | null;
       const markerColor = getColorForValue(val);
       const markerShadow = getShadowForValue(val);
       const isOffline = val === null || val === undefined;
+      const isSelected = station.id === selectedStation?.id;
       const valStr = !isOffline ? `${val.toFixed(1)}${unit}` : 'OFF';
 
       const customIcon = L.divIcon({
         className: 'custom-div-icon',
         html: `
           <div class="relative group">
-            <div class="w-7 h-7 rounded-full border-[3px] border-white shadow-lg flex items-center justify-center transition-all duration-300 transform group-hover:scale-125" 
-                 style="background-color: ${markerColor}; box-shadow: 0 0 20px ${markerShadow};">
+            <div class="w-7 h-7 rounded-full transition-all duration-300 ${isSelected ? 'border-[4px] border-orange-500 ring-4 ring-orange-300/50' : 'border-[3px] border-white group-hover:scale-110'} shadow-lg flex items-center justify-center" 
+                 style="background-color: ${markerColor}; box-shadow: 0 0 ${isSelected ? '30px rgba(249, 115, 22, 0.6)' : '20px ' + markerShadow};">
               ${!isOffline ? '<div class="w-1.5 h-1.5 bg-white/80 rounded-full animate-ping"></div>' : ''}
             </div>
-            <!-- Valor al lado del punto -->
-            <div class="absolute left-9 top-0 whitespace-nowrap bg-white/95 px-2 py-0.5 rounded-md text-[9px] font-black border border-slate-300 shadow-md pointer-events-none" 
-                 style="color: ${markerColor};">
+            <!-- Valor al lado del punto (Ahora clickable) -->
+            <div class="absolute left-9 top-0 whitespace-nowrap bg-white/95 px-2 py-0.5 rounded-md text-[9px] font-black border border-slate-300 shadow-md cursor-pointer ${isSelected ? 'scale-110 origin-left border-blue-500 text-blue-700' : ''}" 
+                 style="color: ${isSelected ? '' : markerColor};">
               ${valStr}
             </div>
-            <!-- Nombre en hover -->
-            <div class="absolute -bottom-10 left-1/2 -translate-x-1/2 whitespace-nowrap bg-white/95 px-3 py-1 rounded-full text-[9px] font-black text-slate-800 border border-slate-300 opacity-0 group-hover:opacity-100 transition-all pointer-events-none uppercase tracking-tighter shadow-xl z-[1001]">
+            <!-- Nombre en hover (o seleccionado) (Ahora clickable) -->
+            <div class="absolute -bottom-10 left-1/2 -translate-x-1/2 whitespace-nowrap bg-white/95 px-3 py-1 rounded-full text-[9px] font-black text-slate-800 border border-slate-300 ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-all cursor-pointer uppercase tracking-tighter shadow-xl z-[1001]">
               ${station.name}
             </div>
           </div>
@@ -146,39 +209,30 @@ const StationMap: React.FC<StationMapProps> = ({ stations, variable, unit, onSta
 
       const marker = L.marker([station.location.lat, station.location.lng], { icon: customIcon })
         .addTo(mapRef.current!)
-        .on('click', () => onStationSelect(station));
+        .on('click', () => {
+          onStationSelect(station);
+        });
 
 
-      marker.bindTooltip(`
-        <div class="p-3 min-w-[140px]">
-          <div class="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Nodo Estación</div>
-          <div class="text-xs font-black text-slate-800 uppercase truncate">${station.name}</div>
-          <div class="mt-2 pt-2 border-t border-slate-200 flex justify-between items-baseline">
-            <span class="text-[9px] font-bold text-slate-600 uppercase">${variable}</span>
-            <span class="text-sm font-black" style="color: ${markerColor}">${valStr}</span>
-          </div>
-        </div>
-      `, {
-        direction: 'top',
-        offset: [0, -15],
-        className: '!bg-white/95 !border-slate-300 !rounded-2xl !p-0 overflow-hidden !shadow-xl'
-      });
+      // Tooltip removed - information is already visible on hover via custom marker
 
       markersRef.current.push(marker);
       group.addLayer(marker);
     });
 
-    if (stations.length > 0) {
-      mapRef.current.fitBounds(group.getBounds(), { padding: [60, 60], maxZoom: 12 });
+    // Only fit bounds on initial load, not on subsequent zoom changes
+    if (stations.length > 0 && !selectedStation && !initialBoundsSetRef.current) {
+      mapRef.current.fitBounds(group.getBounds(), { padding: [60, 60], maxZoom: 10 });
+      initialBoundsSetRef.current = true;
     }
-  }, [stations, variable, unit]);
+  }, [stations, variable, unit, selectedStation, currentZoom]);
 
   return (
     <div className="relative w-full h-full flex flex-col">
       {/* Network Command Box - ELIMINADO */}
 
-      {/* Leyenda de Escala - Compacta y elegante */}
-      <div className="absolute top-4 right-4 z-[1000]">
+      {/* Leyenda de Escala - Reubicada para no tapar header */}
+      <div className="absolute bottom-24 right-4 z-[1000]">
         <div className="bg-white/98 p-3 rounded-2xl border border-slate-200 backdrop-blur-xl shadow-lg">
           <div className="flex items-center gap-2 mb-3">
             <div className="bg-indigo-100 p-1 rounded-md">
@@ -209,7 +263,7 @@ const StationMap: React.FC<StationMapProps> = ({ stations, variable, unit, onSta
         </div>
       </div>
 
-      <div ref={mapContainerRef} className="flex-1 w-full rounded-[3rem] overflow-hidden border border-slate-300 shadow-lg z-0" />
+      <div ref={mapContainerRef} className="absolute inset-0 z-0 bg-slate-100" />
 
       <div className="absolute bottom-4 right-4 z-[1000]">
         <div className="bg-white/90 px-3 py-1.5 rounded-lg text-[8px] font-mono text-slate-500 border border-slate-200 uppercase tracking-wider shadow-md">

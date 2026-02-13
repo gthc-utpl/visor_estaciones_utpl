@@ -75,13 +75,21 @@ export const useWeatherHistory = ({
             console.log(`🌐 Fetching history for ${stationId} (${debouncedStartDate} to ${debouncedEndDate})`);
             const historyData = await fetchClimaRango(stationId, debouncedStartDate, debouncedEndDate);
 
+            console.log(`✅ History data received:`, {
+                stationId,
+                dataPoints: historyData.length,
+                firstPoint: historyData[0],
+                lastPoint: historyData[historyData.length - 1],
+                sample: historyData.slice(0, 3)
+            });
+
             // Guardar en caché
             cache.set(cacheKey, historyData);
             setData(historyData);
         } catch (err) {
             const error = err instanceof Error ? err : new Error('Error al cargar históricos');
             setError(error);
-            console.error('useWeatherHistory error:', error);
+            console.error('❌ useWeatherHistory error:', error);
         } finally {
             setLoading(false);
         }
