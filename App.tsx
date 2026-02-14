@@ -19,7 +19,11 @@ import {
   Loader2,
   X,
   Globe,
-  Sun
+  Sun,
+  LogIn,
+  LogOut,
+  Shield,
+  BarChart3
 } from 'lucide-react';
 import { fetchStations, fetchActualClima, fetchClimaRango } from './services/api';
 import { Station, WeatherData } from './types';
@@ -28,7 +32,10 @@ import StationMap from './components/StationMap';
 import Sparkline from './components/Sparkline';
 import StationCard from './components/StationCard';
 import WindRoseChart from './components/WindRoseChart';
+import LoginModal from './components/LoginModal';
+import AdminDashboard from './components/AdminDashboard';
 import { useWeatherHistory } from './hooks/useWeatherHistory';
+import { useAuth } from './hooks/useAuth';
 import { useDebounce } from './hooks/useDebounce';
 import { generateStationReport } from './utils/reportGenerator';
 
@@ -87,6 +94,7 @@ const variableConfig: Record<string, { label: string, unit: string, icon: React.
 type TimeRange = '24H' | '3D' | '7D' | '30D' | '1A';
 
 const App: React.FC = () => {
+  const { profile, isAdmin, logout } = useAuth();
   const [stations, setStations] = useState<Station[]>([]);
   const [selectedStation, setSelectedStation] = useState<Station | null>(null);
   const [comparisonStation, setComparisonStation] = useState<Station | null>(null);
@@ -95,6 +103,8 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshingNetwork, setRefreshingNetwork] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
 
   // Estados visuales - "activeTab" ya no es necesario estructuralmente, pero ayuda a lógica interna si se requiere
   // Ahora la UI es: ¿Hay estación seleccionada? -> Panel Derecho visible. Siempre -> Mapa visible.
@@ -287,8 +297,15 @@ const App: React.FC = () => {
     );
   }
 
+  // If admin dashboard is active, show it instead
+  if (showAdminDashboard && isAdmin) {
+    return <AdminDashboard onBack={() => setShowAdminDashboard(false)} />;
+  }
+
   return (
     <div className="h-screen w-screen relative bg-slate-50 text-slate-800 font-inter overflow-hidden select-none">
+      {/* Login Modal */}
+      <LoginModal isOpen={showLoginModal} onClose={() => setShowLoginModal(false)} />
 
       {/* CAPA 0: MAPA DE FONDO (Siempre visible) */}
       <div className="absolute inset-0 z-0">
@@ -447,6 +464,36 @@ const App: React.FC = () => {
             <Globe size={20} />
           </button>
         </div>
+      </div>
+
+      {/* CAPA 5: BOTÓN LOGIN/ADMIN (Bottom Left) */}
+      <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2">
+        {isAdmin ? (
+          <>
+            <button
+              onClick={() => setShowAdminDashboard(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-500/30 hover:from-blue-700 hover:to-indigo-700 transition-all active:scale-95"
+            >
+              <BarChart3 className="w-4 h-4" />
+              Panel Admin
+            </button>
+            <button
+              onClick={logout}
+              className="p-2.5 bg-white/90 backdrop-blur-sm rounded-xl border border-slate-200 shadow-md hover:bg-red-50 hover:border-red-200 transition-all group"
+              title={`Cerrar sesión (${profile?.email})`}
+            >
+              <LogOut className="w-4 h-4 text-slate-400 group-hover:text-red-500 transition-colors" />
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={() => setShowLoginModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white/90 backdrop-blur-sm rounded-xl border border-slate-200 shadow-md text-xs font-bold text-slate-500 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition-all active:scale-95"
+          >
+            <LogIn className="w-4 h-4" />
+            Admin
+          </button>
+        )}
       </div>
 
     </div>
