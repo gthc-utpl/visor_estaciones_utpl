@@ -177,12 +177,22 @@ const StationMap: React.FC<StationMapProps> = ({
     const group = L.featureGroup();
 
     filteredStations.forEach(station => {
-      const val = station.currentData[variable] as number | null;
-      const markerColor = getColorForValue(val);
-      const markerShadow = getShadowForValue(val);
-      const isOffline = val === null || val === undefined;
+      const val = station.currentData?.[variable] as number | null | undefined;
+      const hasData = val !== null && val !== undefined;
+      const isStationOnline = station.status === 'online' && station.currentData && Object.keys(station.currentData).length > 1;
+      const markerColor = getColorForValue(hasData ? val : null);
+      const markerShadow = getShadowForValue(hasData ? val : null);
       const isSelected = station.id === selectedStation?.id;
-      const valStr = !isOffline ? `${val.toFixed(1)}${unit}` : 'OFF';
+
+      // Display logic: value, N/D (online but no sensor), or OFF (offline)
+      let valStr: string;
+      if (hasData) {
+        valStr = `${(val as number).toFixed(1)}${unit}`;
+      } else if (isStationOnline) {
+        valStr = 'N/D';
+      } else {
+        valStr = 'OFF';
+      }
 
       const customIcon = L.divIcon({
         className: 'custom-div-icon',
@@ -190,14 +200,14 @@ const StationMap: React.FC<StationMapProps> = ({
           <div class="relative group">
             <div class="w-7 h-7 rounded-full transition-all duration-300 ${isSelected ? 'border-[4px] border-orange-500 ring-4 ring-orange-300/50' : 'border-[3px] border-white group-hover:scale-110'} shadow-lg flex items-center justify-center" 
                  style="background-color: ${markerColor}; box-shadow: 0 0 ${isSelected ? '30px rgba(249, 115, 22, 0.6)' : '20px ' + markerShadow};">
-              ${!isOffline ? '<div class="w-1.5 h-1.5 bg-white/80 rounded-full animate-ping"></div>' : ''}
+              ${hasData ? '<div class="w-1.5 h-1.5 bg-white/80 rounded-full animate-ping"></div>' : ''}
             </div>
-            <!-- Valor al lado del punto (Ahora clickable) -->
-            <div class="absolute left-9 top-0 whitespace-nowrap bg-white/95 px-2 py-0.5 rounded-md text-[9px] font-black border border-slate-300 shadow-md cursor-pointer ${isSelected ? 'scale-110 origin-left border-blue-500 text-blue-700' : ''}" 
-                 style="color: ${isSelected ? '' : markerColor};">
+            <!-- Valor al lado del punto -->
+            <div class="absolute left-9 top-0 whitespace-nowrap ${hasData ? 'bg-white/95' : 'bg-slate-100/80'} px-2 py-0.5 rounded-md text-[9px] font-black border ${hasData ? 'border-slate-300' : 'border-slate-200'} shadow-md cursor-pointer ${isSelected ? 'scale-110 origin-left border-blue-500 text-blue-700' : ''}" 
+                 style="color: ${isSelected ? '' : hasData ? markerColor : '#94a3b8'};">
               ${valStr}
             </div>
-            <!-- Nombre en hover (o seleccionado) (Ahora clickable) -->
+            <!-- Nombre en hover (o seleccionado) -->
             <div class="absolute -bottom-10 left-1/2 -translate-x-1/2 whitespace-nowrap bg-white/95 px-3 py-1 rounded-full text-[9px] font-black text-slate-800 border border-slate-300 ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} transition-all cursor-pointer uppercase tracking-tighter shadow-xl z-[1001]">
               ${station.name}
             </div>
