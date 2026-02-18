@@ -1,10 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
     Thermometer, Droplets, Wind, Sun, Activity, Cloud, ArrowLeft, RefreshCw,
-    TrendingUp, TrendingDown, Calendar, BarChart3, Loader2, ChevronDown
+    TrendingUp, TrendingDown, Calendar, BarChart3, Loader2, ChevronDown,
+    Settings, Download, PieChart, FileText, Layers, Map as MapIcon, Save
 } from 'lucide-react';
 import { fetchClimaRango, fetchActualClima, fetchStations } from '../services/api';
 import { Station, WeatherData } from '../types';
+import {
+    ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
+    Legend, ResponsiveContainer, Area, Brush
+} from 'recharts';
 import WeatherChart from './WeatherChart';
 
 interface AdminDashboardProps {
@@ -161,8 +166,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     const [historyData, setHistoryData] = useState<WeatherData[]>([]);
     const [loading, setLoading] = useState(false);
     const [loadingStations, setLoadingStations] = useState(true);
-    const [dateRange, setDateRange] = useState<'7D' | '30D' | '90D' | '1A'>('30D');
-    const [activeTab, setActiveTab] = useState<'diario' | 'mensual' | 'aire' | 'confort'>('diario');
+    const [dateRange, setDateRange] = useState<'7D' | '30D' | '90D' | '1A' | 'custom'>('30D');
+    const [activeTab, setActiveTab] = useState<'diario' | 'mensual' | 'aire' | 'confort' | 'graficos' | 'config'>('diario');
+    const [customDates, setCustomDates] = useState({ start: '', end: '' });
+
+    // Configuración del Visor
+    const [viewerConfig, setViewerConfig] = useState(() => {
+        const saved = localStorage.getItem('visor_config');
+        return saved ? JSON.parse(saved) : {
+            showWind: true,
+            showRadar: true,
+            showTemp: true,
+            defaultStation: '6782',
+            theme: 'light'
+        };
+    });
 
     // Load stations
     useEffect(() => {
@@ -170,7 +188,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             try {
                 const data = await fetchStations();
                 setStations(data);
-                if (data.length > 0) setSelectedStation(data[0].id);
+                if (data.length > 0 && !selectedStation) setSelectedStation(data[0].id);
             } catch (e) {
                 console.error('Error loading stations:', e);
             } finally {
@@ -188,19 +206,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             setLoading(true);
             try {
                 const now = new Date();
-                const start = new Date();
+                let start = new Date();
+                let end = new Date();
 
-                switch (dateRange) {
-                    case '7D': start.setDate(now.getDate() - 7); break;
-                    case '30D': start.setDate(now.getDate() - 30); break;
-                    case '90D': start.setDate(now.getDate() - 90); break;
-                    case '1A': start.setFullYear(now.getFullYear() - 1); break;
+                if (dateRange === 'custom') {
+                    if (!customDates.start || !customDates.end) {
+                        setLoading(false);
+                        return;
+                    }
+                    // Ajustar zona horaria local para input date (YYYY-MM-DD)
+                    start = new Date(customDates.start + 'T00:00:00');
+                    end = new Date(customDates.end + 'T23:59:59');
+                } else {
+                    switch (dateRange) {
+                        case '7D': start.setDate(now.getDate() - 7); break;
+                        case '30D': start.setDate(now.getDate() - 30); break;
+                        case '90D': start.setDate(now.getDate() - 90); break;
+                        case '1A': start.setFullYear(now.getFullYear() - 1); break;
+                    }
                 }
 
                 const data = await fetchClimaRango(
                     selectedStation,
                     start.toISOString(),
-                    now.toISOString()
+                    end.toISOString()
                 );
                 setHistoryData(data);
             } catch (e) {
@@ -210,7 +239,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             }
         };
         loadHistory();
-    }, [selectedStation, dateRange]);
+    }, [selectedStation, dateRange, customDates]);
 
     const dailyAggregates = useMemo(() => calcDailyAggregates(historyData), [historyData]);
     const monthlyAggregates = useMemo(() => calcMonthlyAggregates(dailyAggregates), [dailyAggregates]);
@@ -278,19 +307,38 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     </div>
 
                     {/* Date Range */}
-                    <div className="bg-slate-100 rounded-xl p-1 flex gap-0.5">
-                        {(['7D', '30D', '90D', '1A'] as const).map(r => (
-                            <button
-                                key={r}
-                                onClick={() => setDateRange(r)}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${dateRange === r
-                                    ? 'bg-blue-600 text-white shadow-md'
-                                    : 'text-slate-500 hover:bg-white hover:shadow-sm'
-                                    }`}
-                            >
-                                {r}
-                            </button>
-                        ))}
+                    <div className="flex items-center gap-3">
+                        {dateRange === 'custom' && (
+                            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1 shadow-sm">
+                                <input
+                                    type="date"
+                                    value={customDates.start}
+                                    onChange={e => setCustomDates(prev => ({ ...prev, start: e.target.value }))}
+                                    className="text-xs font-bold text-slate-600 focus:outline-none"
+                                />
+                                <span className="text-slate-300">→</span>
+                                <input
+                                    type="date"
+                                    value={customDates.end}
+                                    onChange={e => setCustomDates(prev => ({ ...prev, end: e.target.value }))}
+                                    className="text-xs font-bold text-slate-600 focus:outline-none"
+                                />
+                            </div>
+                        )}
+                        <div className="bg-slate-100 rounded-xl p-1 flex gap-0.5">
+                            {(['7D', '30D', '90D', '1A', 'custom'] as const).map(r => (
+                                <button
+                                    key={r}
+                                    onClick={() => setDateRange(r)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${dateRange === r
+                                        ? 'bg-blue-600 text-white shadow-md'
+                                        : 'text-slate-500 hover:bg-white hover:shadow-sm'
+                                        }`}
+                                >
+                                    {r === 'custom' ? 'Rango' : r}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -337,10 +385,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                             <div className="flex border-b border-slate-200">
                                 {[
-                                    { key: 'diario', label: 'Agregados Diarios', icon: <Calendar className="w-4 h-4" /> },
-                                    { key: 'mensual', label: 'Agregados Mensuales', icon: <BarChart3 className="w-4 h-4" /> },
-                                    { key: 'aire', label: 'Calidad del Aire', icon: <Activity className="w-4 h-4" /> },
-                                    { key: 'confort', label: 'Confort & Energía', icon: <Sun className="w-4 h-4" /> },
+                                    { key: 'diario', label: 'Datos Diarios', icon: <Calendar className="w-4 h-4" /> },
+                                    { key: 'graficos', label: 'Análisis Gráfico', icon: <TrendingUp className="w-4 h-4" /> },
+                                    { key: 'mensual', label: 'Resumen Mensual', icon: <BarChart3 className="w-4 h-4" /> },
+                                    { key: 'aire', label: 'Aire & Calidad', icon: <Activity className="w-4 h-4" /> },
+                                    { key: 'config', label: 'Configuración Visor', icon: <Settings className="w-4 h-4" /> },
                                 ].map(tab => (
                                     <button
                                         key={tab.key}
@@ -360,7 +409,28 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                 {/* DIARIO TAB */}
                                 {activeTab === 'diario' && (
                                     <div>
-                                        <h3 className="text-sm font-black text-slate-700 mb-4">📊 Resumen Diario — {stationName}</h3>
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h3 className="text-sm font-black text-slate-700">📊 Resumen Diario — {stationName}</h3>
+                                            <button
+                                                onClick={() => {
+                                                    const csvContent = "data:text/csv;charset=utf-8,"
+                                                        + ["Fecha,Registros,TMax,TMin,TProm,Lluvia,Humedad"].join(",") + "\n"
+                                                        + dailyAggregates.map(r =>
+                                                            `${r.day},${r.records},${r.temp_max || ''},${r.temp_min || ''},${r.temp_avg || ''},${r.rain_total || ''},${r.humidity_avg || ''}`
+                                                        ).join("\n");
+                                                    const encodedUri = encodeURI(csvContent);
+                                                    const link = document.createElement("a");
+                                                    link.setAttribute("href", encodedUri);
+                                                    link.setAttribute("download", `clima_${stationName}_${dateRange}.csv`);
+                                                    document.body.appendChild(link);
+                                                    link.click();
+                                                    document.body.removeChild(link);
+                                                }}
+                                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-xs font-bold flex items-center gap-2 transition-all"
+                                            >
+                                                <Download className="w-3.5 h-3.5" /> Exportar CSV
+                                            </button>
+                                        </div>
                                         <div className="overflow-x-auto rounded-xl border border-slate-200">
                                             <table className="w-full text-xs">
                                                 <thead>
@@ -404,6 +474,175 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                         {dailyAggregates.length === 0 && (
                                             <p className="text-center text-slate-400 text-sm py-8">No hay datos disponibles para el rango seleccionado</p>
                                         )}
+                                    </div>
+                                )}
+
+                                {activeTab === 'graficos' && (
+                                    <div className="space-y-6 animate-in fade-in duration-500">
+                                        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                                            <div className="flex items-center justify-between mb-6">
+                                                <div>
+                                                    <h3 className="text-lg font-black text-slate-800">Tendencia Térmica</h3>
+                                                    <p className="text-xs text-slate-400">Máximas, Mínimas y Promedios Diarios</p>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <span className="flex items-center gap-1 text-[10px]"><span className="w-2 h-2 rounded-full bg-red-500"></span> Max</span>
+                                                    <span className="flex items-center gap-1 text-[10px]"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> Prom</span>
+                                                    <span className="flex items-center gap-1 text-[10px]"><span className="w-2 h-2 rounded-full bg-blue-500"></span> Min</span>
+                                                </div>
+                                            </div>
+                                            <div className="h-80 w-full">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <ComposedChart data={dailyAggregates} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                        <XAxis
+                                                            dataKey="day"
+                                                            fontSize={10}
+                                                            tickFormatter={d => d.substring(5)}
+                                                            stroke="#94a3b8"
+                                                            tickLine={false}
+                                                            axisLine={false}
+                                                        />
+                                                        <YAxis fontSize={10} stroke="#94a3b8" tickLine={false} axisLine={false} unit="°C" />
+                                                        <RechartsTooltip
+                                                            contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                                            formatter={(value: number) => [value.toFixed(1) + '°C']}
+                                                        />
+                                                        <Area type="monotone" dataKey="temp_range" fill="#eff6ff" stroke="none" />
+                                                        <Line type="monotone" dataKey="temp_max" stroke="#ef4444" strokeWidth={3} dot={{ r: 0 }} activeDot={{ r: 6 }} />
+                                                        <Line type="monotone" dataKey="temp_min" stroke="#3b82f6" strokeWidth={3} dot={{ r: 0 }} activeDot={{ r: 6 }} />
+                                                        <Line type="monotone" dataKey="temp_avg" stroke="#10b981" strokeWidth={3} strokeDasharray="5 5" dot={{ r: 0 }} activeDot={{ r: 6 }} />
+                                                        <Brush dataKey="day" height={30} stroke="#cbd5e1" />
+                                                    </ComposedChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                                                <h3 className="text-sm font-black text-slate-800 mb-4">Precipitación vs Humedad</h3>
+                                                <div className="h-64 w-full">
+                                                    <ResponsiveContainer>
+                                                        <ComposedChart data={dailyAggregates}>
+                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                            <XAxis dataKey="day" fontSize={10} tickFormatter={d => d.substring(5)} stroke="#94a3b8" tickLine={false} axisLine={false} />
+                                                            <YAxis yAxisId="left" fontSize={10} stroke="#94a3b8" tickLine={false} axisLine={false} />
+                                                            <YAxis yAxisId="right" orientation="right" fontSize={10} stroke="#94a3b8" tickLine={false} axisLine={false} unit="%" />
+                                                            <RechartsTooltip contentStyle={{ borderRadius: '8px' }} />
+                                                            <Bar yAxisId="left" dataKey="rain_total" fill="#3b82f6" radius={[4, 4, 0, 0]} maxSize={40} />
+                                                            <Line yAxisId="right" type="monotone" dataKey="humidity_avg" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                                                        </ComposedChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                                                <h3 className="text-sm font-black text-slate-800 mb-4">Radiación y Horas de Sol</h3>
+                                                <div className="h-64 w-full">
+                                                    <ResponsiveContainer>
+                                                        <ComposedChart data={dailyAggregates}>
+                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                            <XAxis dataKey="day" fontSize={10} tickFormatter={d => d.substring(5)} stroke="#94a3b8" tickLine={false} axisLine={false} />
+                                                            <YAxis yAxisId="left" fontSize={10} stroke="#94a3b8" unit=" W/m²" tickLine={false} axisLine={false} />
+                                                            <YAxis yAxisId="right" orientation="right" fontSize={10} stroke="#94a3b8" unit=" h" tickLine={false} axisLine={false} />
+                                                            <RechartsTooltip contentStyle={{ borderRadius: '8px' }} />
+                                                            <Area yAxisId="left" type="monotone" dataKey="radiation_avg" fill="#fef3c7" stroke="#f59e0b" strokeWidth={2} />
+                                                            <Bar yAxisId="right" dataKey="sun_hours" fill="#fbbf24" radius={[4, 4, 0, 0]} maxSize={20} />
+                                                        </ComposedChart>
+                                                    </ResponsiveContainer>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {activeTab === 'config' && (
+                                    <div className="max-w-2xl mx-auto py-8 animate-in slide-in-from-bottom-4 duration-500">
+                                        <div className="flex items-center gap-3 mb-6">
+                                            <div className="p-3 bg-slate-100 rounded-xl">
+                                                <Settings className="w-6 h-6 text-slate-700" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-xl font-black text-slate-800">Configuración del Visor Principal</h3>
+                                                <p className="text-xs text-slate-400">Personaliza la experiencia para los usuarios finales</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-white rounded-2xl border border-slate-200 p-8 shadow-xl shadow-slate-200/50 space-y-8">
+                                            <div>
+                                                <h4 className="text-sm font-black text-slate-700 mb-4 flex items-center gap-2 uppercase tracking-wider">
+                                                    <Layers className="w-4 h-4 text-blue-500" /> Capas Visibles por Defecto
+                                                </h4>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    {[
+                                                        { id: 'showWind', label: 'Capa de Viento (Animación)', desc: 'Muestra partículas de viento en tiempo real' },
+                                                        { id: 'showRadar', label: 'Radar de Lluvia', desc: 'Precipitación detectada por radar (si disponible)' },
+                                                        { id: 'showTemp', label: 'Marcadores de Temperatura', desc: 'Etiquetas numéricas sobre el mapa' }
+                                                    ].map(opt => (
+                                                        <label key={opt.id} className="flex items-start gap-3 p-4 rounded-xl border border-slate-100 bg-slate-50 hover:bg-white hover:border-blue-200 transition-all cursor-pointer group">
+                                                            <div className="relative flex items-center">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={(viewerConfig as any)[opt.id]}
+                                                                    onChange={e => setViewerConfig(prev => ({ ...prev, [opt.id]: e.target.checked }))}
+                                                                    className="peer h-5 w-5 cursor-pointer appearance-none rounded-md border border-slate-300 transition-all checked:border-blue-500 checked:bg-blue-500 hover:shadow-md"
+                                                                />
+                                                                <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white opacity-0 peer-checked:opacity-100 pointer-events-none">
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                                                                </span>
+                                                            </div>
+                                                            <div>
+                                                                <span className="block text-sm font-bold text-slate-700 group-hover:text-blue-700">{opt.label}</span>
+                                                                <span className="text-[10px] text-slate-400 font-medium">{opt.desc}</span>
+                                                            </div>
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="pt-8 border-t border-slate-100">
+                                                <h4 className="text-sm font-black text-slate-700 mb-4 flex items-center gap-2 uppercase tracking-wider">
+                                                    <MapIcon className="w-4 h-4 text-amber-500" /> Estación Inicial
+                                                </h4>
+                                                <div className="relative">
+                                                    <select
+                                                        value={viewerConfig.defaultStation}
+                                                        onChange={e => setViewerConfig(prev => ({ ...prev, defaultStation: e.target.value }))}
+                                                        className="w-full appearance-none p-4 bg-slate-50 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
+                                                    >
+                                                        {stations.map(s => <option key={s.id} value={s.id}>{s.name} - {s.location.lat.toFixed(4)}, {s.location.lng.toFixed(4)}</option>)}
+                                                    </select>
+                                                    <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                                                </div>
+                                                <p className="mt-2 text-[10px] text-slate-400 font-medium pl-1">
+                                                    * Esta será la estación seleccionada automáticamente al abrir el visor.
+                                                </p>
+                                            </div>
+
+                                            <div className="pt-8 flex justify-end">
+                                                <button
+                                                    onClick={() => {
+                                                        localStorage.setItem('visor_config', JSON.stringify(viewerConfig));
+                                                        // Simular toast
+                                                        const btn = document.getElementById('save-btn');
+                                                        if (btn) {
+                                                            const originalText = btn.innerHTML;
+                                                            btn.innerHTML = '¡Guardado con éxito!';
+                                                            btn.classList.add('bg-emerald-600', 'text-white');
+                                                            setTimeout(() => {
+                                                                btn.innerHTML = originalText;
+                                                                btn.classList.remove('bg-emerald-600');
+                                                            }, 2000);
+                                                        }
+                                                    }}
+                                                    id="save-btn"
+                                                    className="flex items-center gap-2 px-8 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 transition-all shadow-lg active:scale-95"
+                                                >
+                                                    <Save className="w-4 h-4" />
+                                                    Guardar Configuración
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
 
