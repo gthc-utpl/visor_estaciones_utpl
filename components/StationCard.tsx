@@ -37,9 +37,17 @@ const StationCard: React.FC<StationCardProps> = ({
         return (v !== undefined && v !== null && !isNaN(Number(v))) ? Number(v) : null;
     };
 
+    // Helper: get display value with wind conversion m/s → km/h
+    const getDisplayValue = (key: keyof WeatherData): number | null => {
+        const v = getValue(key);
+        if (v === null) return null;
+        if (key === 'windSpeed') return Math.round(v * 3.6 * 10) / 10;
+        return v;
+    };
+
     const currentTemp = getValue('temperature') ?? '--';
     const windDir = getValue('windDirection') ?? 0;
-    const windSpeed = getValue('windSpeed') ?? 0;
+    const windSpeedKmh = getDisplayValue('windSpeed') ?? 0;
 
     // Determine available variables from history data
     const availableVariables = React.useMemo(() => {
@@ -100,7 +108,7 @@ const StationCard: React.FC<StationCardProps> = ({
     ] as const;
 
     return (
-        <div className="w-full max-w-md bg-white shadow-2xl rounded-t-xl md:rounded-xl overflow-hidden border border-slate-200 animate-in slide-in-from-bottom-4 duration-300 flex flex-col max-h-[80vh] md:max-h-[600px]">
+        <div className="w-full max-w-md bg-white shadow-2xl rounded-t-xl md:rounded-xl overflow-hidden border border-slate-200 animate-in slide-in-from-bottom-4 duration-300 flex flex-col max-h-[85vh] md:max-h-[80vh]">
 
             {/* 1. Header (Orange themed like request) */}
             <div className="bg-[#f28e2c] p-4 text-white relative">
@@ -171,7 +179,7 @@ const StationCard: React.FC<StationCardProps> = ({
                             </div>
 
                             {/* Wind Widget */}
-                            <WindCompass degrees={windDir} speed={windSpeed} unit="km/h" />
+                            <WindCompass degrees={windDir} speed={windSpeedKmh} unit="km/h" />
                         </div>
 
                         {/* Weather Summary Bar */}
@@ -200,7 +208,7 @@ const StationCard: React.FC<StationCardProps> = ({
                         {/* Grid Stats - Dynamic Rendering */}
                         <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-200/60">
                             {gridItems.map((item) => {
-                                const val = getValue(item.key as keyof WeatherData);
+                                const val = getDisplayValue(item.key as keyof WeatherData);
                                 if (val === null) return null; // Don't render missing vars
 
                                 return (
@@ -278,7 +286,7 @@ const StationCard: React.FC<StationCardProps> = ({
                         </div>
 
                         {/* Chart Area */}
-                        <div className="w-full h-[300px] bg-white rounded-xl border border-slate-200 p-4 shadow-inner">
+                        <div className="w-full min-h-[250px] h-[40vh] max-h-[350px] bg-white rounded-xl border border-slate-200 p-4 shadow-inner">
                             {loadingHistory ? (
                                 <div className="h-full w-full flex items-center justify-center animate-pulse text-xs font-bold text-slate-400 uppercase">
                                     Cargando Historial...

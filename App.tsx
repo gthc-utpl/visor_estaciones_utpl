@@ -2,42 +2,29 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Cloud,
   Map,
-  List,
-  LayoutDashboard,
-  Settings,
   Wind,
   Droplets,
   Thermometer,
   Activity,
-  Calendar,
   Search,
   RefreshCw,
-  Network,
   Download,
-  FileText,
-  AlertCircle,
   Loader2,
   X,
   Globe,
   Sun,
   LogIn,
   LogOut,
-  Shield,
   BarChart3
 } from 'lucide-react';
 import { fetchStations, fetchActualClima, fetchClimaRango } from './services/api';
 import { Station, WeatherData } from './types';
-import WeatherChart from './components/WeatherChart';
 import StationMap from './components/StationMap';
-import Sparkline from './components/Sparkline';
 import StationCard from './components/StationCard';
-import WindRoseChart from './components/WindRoseChart';
 import LoginModal from './components/LoginModal';
 import AdminDashboard from './components/AdminDashboard';
 import { useWeatherHistory } from './hooks/useWeatherHistory';
 import { useAuth } from './hooks/useAuth';
-import { useDebounce } from './hooks/useDebounce';
-import { generateStationReport } from './utils/reportGenerator';
 
 // Configuración de variables
 const variableConfig: Record<string, { label: string, unit: string, icon: React.ReactNode, color: string }> = {
@@ -236,6 +223,19 @@ const App: React.FC = () => {
     return 'Hace >1d';
   };
 
+  // Helper: obtener valor formateado de la variable de red para una estación
+  const getNetworkVarDisplay = (station: Station): string => {
+    const raw = station.currentData?.[networkVariable as keyof WeatherData];
+    if (raw === null || raw === undefined) return '--';
+    const val = Number(raw);
+    if (isNaN(val)) return '--';
+    // Conversión m/s → km/h para viento
+    const displayed = networkVariable === 'windSpeed' ? val * 3.6 : val;
+    const info = getVariableInfo(networkVariable);
+    const decimals = networkVariable === 'humidity' ? 0 : 1;
+    return `${displayed.toFixed(decimals)} ${info.unit}`;
+  };
+
   const onSelectStation = async (station: Station, fromList = true) => {
     console.log('🎯 Station selected:', {
       stationId: station.id,
@@ -313,8 +313,8 @@ const App: React.FC = () => {
           stations={stations}
           onStationSelect={(s) => onSelectStation(s, false)}
           selectedStation={selectedStation}
-          variable={(!selectedStation ? networkVariable : activeVariable) as any} // Cast to WeatherVariable
-          unit={variableConfig[!selectedStation ? networkVariable : activeVariable]?.unit || ''}
+          variable={networkVariable as any}
+          unit={variableConfig[networkVariable]?.unit || ''}
           heatmapMode={false}
           tileLayer={networkSubView === 'map' ? 'light' : 'satellite'}
         />
@@ -359,70 +359,77 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* Variable Selector (Floating Pills) */}
-        {!selectedStation && (
-          <div className="pointer-events-auto bg-white/95 backdrop-blur-md shadow-xl rounded-full p-1.5 border border-slate-200 flex gap-1 transform transition-all hover:scale-105">
-            {['temperature', 'rainfall', 'windSpeed', 'humidity'].map(v => (
-              <button
-                key={v}
-                onClick={() => setNetworkVariable(v)}
-                className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-2 ${networkVariable === v ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}
-              >
-                {getVariableInfo(v).icon}
-                <span className="hidden sm:inline">{getVariableInfo(v).label}</span>
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Variable Selector (Floating Pills) — siempre visible */}
+        <div className="pointer-events-auto bg-white/95 backdrop-blur-md shadow-xl rounded-full p-1.5 border border-slate-200 flex gap-1">
+          {['temperature', 'rainfall', 'windSpeed', 'humidity'].map(v => (
+            <button
+              key={v}
+              onClick={() => setNetworkVariable(v)}
+              className={`px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-2 ${networkVariable === v ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}
+            >
+              {getVariableInfo(v).icon}
+              <span className="hidden sm:inline">{getVariableInfo(v).label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* CAPA 2: PANEL IZQUIERDO (Lista de Estaciones) */}
-      <div className={`absolute top-28 left-4 bottom-4 w-80 z-10 flex flex-col transition-transform duration-500 ease-out pointer-events-none ${selectedStation ? '-translate-x-[120%]' : 'translate-x-0'}`}>
+      {/* CAPA 2: PANEL IZQUIERDO (Lista de Estaciones) — siempre visible */}
+      <div className={`absolute top-28 left-4 bottom-4 z-10 flex flex-col transition-all duration-500 ease-out pointer-events-none ${selectedStation ? 'w-64' : 'w-80'}`}>
         <div className="bg-white/90 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] rounded-3xl border border-white/40 flex flex-col h-full overflow-hidden pointer-events-auto">
           {/* Header Lista */}
           <div className="p-4 border-b border-slate-100/50">
-            <div className="flex items-center justify-between mb-4 px-1">
+            <div className="flex items-center justify-between mb-3 px-1">
               <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Estaciones</h3>
               <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded text-[10px] font-bold">{stations.length}</span>
             </div>
-            <div className="relative group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={16} />
-              <input
-                type="text"
-                placeholder="Filtrar por nombre o ID..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-slate-50 border-none rounded-xl py-3 pl-10 pr-3 text-xs font-bold text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all shadow-inner"
-              />
-            </div>
+            {!selectedStation && (
+              <div className="relative group">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={16} />
+                <input
+                  type="text"
+                  placeholder="Filtrar por nombre o ID..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-slate-50 border-none rounded-xl py-3 pl-10 pr-3 text-xs font-bold text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all shadow-inner"
+                />
+              </div>
+            )}
           </div>
 
           {/* Lista Scrollable */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-2 space-y-1.5 custom-scrollbar">
             {stations
               .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()) || s.id.includes(searchTerm))
-              .map(station => (
-                <button
-                  key={station.id}
-                  onClick={() => onSelectStation(station)}
-                  className="w-full text-left p-4 rounded-2xl bg-white/80 hover:bg-white border border-transparent hover:border-blue-200 hover:shadow-lg transition-all group relative overflow-hidden"
-                >
-                  <div className="flex justify-between items-start mb-2 relative z-10">
-                    <span className="text-[11px] font-black uppercase text-slate-700 tracking-tight leading-tight">{station.name}</span>
-                    <div className={`w-2 h-2 rounded-full shadow-sm ${station.status === 'online' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                  </div>
+              .map(station => {
+                const isSelected = selectedStation?.id === station.id;
+                return (
+                  <button
+                    key={station.id}
+                    onClick={() => onSelectStation(station)}
+                    className={`w-full text-left rounded-2xl transition-all group overflow-hidden ${
+                      isSelected
+                        ? 'bg-blue-50 border-2 border-blue-400 shadow-md p-3'
+                        : 'bg-white/80 hover:bg-white border border-transparent hover:border-blue-200 hover:shadow-lg p-3'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-1.5">
+                      <span className={`text-[11px] font-black uppercase tracking-tight leading-tight ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>
+                        {station.name}
+                      </span>
+                      <div className={`w-2 h-2 rounded-full shadow-sm flex-shrink-0 mt-0.5 ${station.status === 'online' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                    </div>
 
-                  <div className="flex items-center justify-between relative z-10">
-                    <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 rounded">{station.id}</span>
-                    <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">{getSimulatedTimeAgo(station.currentData?.timestamp)}</span>
-                  </div>
-
-                  {/* Sparkline Decorativo */}
-                  <div className="absolute bottom-0 left-0 right-0 h-10 opacity-10 group-hover:opacity-25 transition-opacity pointer-events-none">
-                    <Sparkline data={station.history} color="#2563eb" />
-                  </div>
-                </button>
-              ))}
+                    <div className="flex items-center justify-between">
+                      {/* Valor actual de la variable de red */}
+                      <span className={`text-sm font-black ${isSelected ? 'text-blue-600' : 'text-slate-800'}`}>
+                        {getNetworkVarDisplay(station)}
+                      </span>
+                      <span className="text-[9px] font-bold text-slate-400">{getSimulatedTimeAgo(station.currentData?.timestamp)}</span>
+                    </div>
+                  </button>
+                );
+              })}
           </div>
         </div>
       </div>

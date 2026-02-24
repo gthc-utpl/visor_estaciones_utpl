@@ -56,10 +56,10 @@ const StationMap: React.FC<StationMapProps> = ({
         ];
       case 'windSpeed':
         return [
-          { min: 0, max: 5, color: '#94a3b8', label: 'Calma', shadow: 'rgba(148, 163, 184, 0.5)' },
-          { min: 5, max: 15, color: '#10b981', label: 'Brisa', shadow: 'rgba(16, 185, 129, 0.5)' },
-          { min: 15, max: 30, color: '#f59e0b', label: 'Fuerte', shadow: 'rgba(245, 158, 11, 0.5)' },
-          { min: 30, max: 200, color: '#ef4444', label: 'Peligro', shadow: 'rgba(239, 68, 68, 0.5)' },
+          { min: 0, max: 20, color: '#94a3b8', label: 'Calma', shadow: 'rgba(148, 163, 184, 0.5)' },
+          { min: 20, max: 50, color: '#10b981', label: 'Brisa', shadow: 'rgba(16, 185, 129, 0.5)' },
+          { min: 50, max: 100, color: '#f59e0b', label: 'Fuerte', shadow: 'rgba(245, 158, 11, 0.5)' },
+          { min: 100, max: 720, color: '#ef4444', label: 'Peligro', shadow: 'rgba(239, 68, 68, 0.5)' },
         ];
       case 'pm25':
         return [
@@ -177,7 +177,8 @@ const StationMap: React.FC<StationMapProps> = ({
     const group = L.featureGroup();
 
     filteredStations.forEach(station => {
-      const val = station.currentData?.[variable] as number | null | undefined;
+      const rawVal = station.currentData?.[variable] as number | null | undefined;
+      const val = (variable === 'windSpeed' && rawVal !== null && rawVal !== undefined) ? rawVal * 3.6 : rawVal;
       const hasData = val !== null && val !== undefined;
       const isStationOnline = station.status === 'online' && station.currentData && Object.keys(station.currentData).length > 1;
       const markerColor = getColorForValue(hasData ? val : null);

@@ -115,9 +115,9 @@ export const fetchActualClima = async (stationId: string): Promise<WeatherData> 
  * 
  * La respuesta viene envuelta: { resolucion, registros, datos: [...] }
  */
-export const fetchClimaRango = async (stationId: string, inicio: string, fin: string): Promise<WeatherData[]> => {
+export const fetchClimaRango = async (stationId: string, inicio: string, fin: string): Promise<{ data: WeatherData[], resolution: string }> => {
   try {
-    if (!inicio || !fin) return [];
+    if (!inicio || !fin) return { data: [], resolution: '15min' };
 
     const startTime = performance.now();
 
@@ -153,12 +153,12 @@ export const fetchClimaRango = async (stationId: string, inicio: string, fin: st
       resolucion = 'wrapped';
     } else {
       console.warn('⚠️ Unexpected history structure:', rawData);
-      return [];
+      return { data: [], resolution: 'desconocida' };
     }
 
     if (!Array.isArray(data)) {
       console.warn('⚠️ Data is not an array:', data);
-      return [];
+      return { data: [], resolution: resolucion };
     }
 
     const mappedData = data
@@ -172,10 +172,10 @@ export const fetchClimaRango = async (stationId: string, inicio: string, fin: st
       console.log(`📋 First: ${mappedData[0].timestamp} | Last: ${mappedData[mappedData.length - 1].timestamp}`);
     }
 
-    return mappedData;
+    return { data: mappedData, resolution: resolucion };
   } catch (error) {
     console.error("fetchClimaRango error:", error);
-    return [];
+    return { data: [], resolution: 'desconocida' };
   }
 };
 

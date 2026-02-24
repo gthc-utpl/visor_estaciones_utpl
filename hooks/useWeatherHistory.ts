@@ -73,10 +73,12 @@ export const useWeatherHistory = ({
 
         try {
             console.log(`🌐 Fetching history for ${stationId} (${debouncedStartDate} to ${debouncedEndDate})`);
-            const historyData = await fetchClimaRango(stationId, debouncedStartDate, debouncedEndDate);
+            const result = await fetchClimaRango(stationId, debouncedStartDate, debouncedEndDate);
+            const historyData = result.data;
 
             console.log(`✅ History data received:`, {
                 stationId,
+                resolution: result.resolution,
                 dataPoints: historyData.length,
                 firstPoint: historyData[0],
                 lastPoint: historyData[historyData.length - 1],

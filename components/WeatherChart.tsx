@@ -66,7 +66,8 @@ const WeatherChart: React.FC<WeatherChartProps> = ({
     return sorted.map((d) => {
       const dateObj = new Date(d.timestamp);
       const ts = dateObj.getTime();
-      const value = d[dataKey];
+      const rawValue = d[dataKey];
+      const value = (dataKey === 'windSpeed' && typeof rawValue === 'number') ? Math.round(rawValue * 3.6 * 10) / 10 : rawValue;
 
       // Para datos secundarios de comparación
       let secondaryValue = null;
