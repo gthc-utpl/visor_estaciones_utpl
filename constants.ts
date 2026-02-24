@@ -58,7 +58,6 @@ export const MOCK_STATIONS: Station[] = [
   createStation("32943", "UTPL San Pedro", -3.993280, -79.50097, 'rural', 19),
   createStation("67822", "UTPL Militar", -3.967029, -79.20393, 'urban', 18),
   createStation("67823", "UTPL Villonaco", -3.987570, -79.26955, 'alpine', 12),
-  createStation("67824", "San Lucas", -3.726680, -79.20498, 'rural', 14, 'offline'),
   createStation("67825", "UTPL Técnico", -3.988890, -79.24998, 'urban', 18),
   createStation("67826", "UTPL Jipiro", -3.972540, -79.18971, 'urban', 17),
   createStation("68022", "UTPL Sede Central", -3.987710, -79.19676, 'urban', 18),
