@@ -15,7 +15,9 @@ import {
   Sun,
   LogIn,
   LogOut,
-  BarChart3
+  BarChart3,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { fetchStations, fetchActualClima, fetchClimaRango } from './services/api';
 import { Station, WeatherData } from './types';
@@ -92,6 +94,7 @@ const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [refreshAgo, setRefreshAgo] = useState('');
   const failCountRef = useRef(0);
@@ -99,7 +102,7 @@ const App: React.FC = () => {
 
   // Estados visuales
 
-  const [networkSubView, setNetworkSubView] = useState<'list' | 'map'>('map'); // Controla las capas del mapa (light vs satelite)
+  const [networkSubView, setNetworkSubView] = useState<'list' | 'map'>('list'); // Controla las capas del mapa (light vs satelite) — default: satellite
   const [networkVariable, setNetworkVariable] = useState<string>('temperature');
   const [graphVariable, setGraphVariable] = useState<string>('temperature'); // Variable para el gráfico del StationCard
 
@@ -297,7 +300,6 @@ const App: React.FC = () => {
       location: station.location
     });
     setSelectedStation({ ...station, history: [] });
-    // Al seleccionar, reseteamos comparación para evitar mezclas con datos viejos
     setComparisonStation(null);
   };
 
@@ -435,64 +437,117 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* CAPA 2: PANEL IZQUIERDO (Lista de Estaciones) — siempre visible */}
-      <div className={`absolute top-28 left-4 bottom-4 z-10 flex flex-col transition-all duration-500 ease-out pointer-events-none ${selectedStation ? 'w-64' : 'w-80'}`}>
-        <div className="bg-white/90 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] rounded-3xl border border-white/40 flex flex-col h-full overflow-hidden pointer-events-auto">
-          {/* Header Lista */}
-          <div className="p-4 border-b border-slate-100/50">
-            <div className="flex items-center justify-between mb-3 px-1">
-              <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Estaciones</h3>
-              <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded text-[10px] font-bold">{stations.length}</span>
+      {/* CAPA 2: PANEL IZQUIERDO (Lista de Estaciones) */}
+      <div className={`absolute top-28 left-4 bottom-4 z-10 flex flex-col transition-all duration-300 ease-out pointer-events-none ${panelCollapsed ? 'w-10' : selectedStation ? 'w-64' : 'w-80'}`}>
+        {panelCollapsed ? (
+          /* Estado colapsado */
+          <button
+            onClick={() => setPanelCollapsed(false)}
+            className="pointer-events-auto bg-white/90 backdrop-blur-md rounded-xl shadow-lg border border-slate-200 p-2 hover:bg-blue-50 transition-all flex flex-col items-center gap-2"
+            title="Mostrar estaciones"
+          >
+            <ChevronRight size={16} className="text-slate-500" />
+            <span className="text-[8px] font-black text-slate-400 [writing-mode:vertical-lr] rotate-180 tracking-wider uppercase">{stations.length} Est.</span>
+          </button>
+        ) : (
+          <div className="bg-white/90 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] rounded-3xl border border-white/40 flex flex-col h-full overflow-hidden pointer-events-auto">
+            {/* Header Lista */}
+            <div className="p-4 border-b border-slate-100/50">
+              <div className="flex items-center justify-between mb-3 px-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Estaciones</h3>
+                  <span className="bg-blue-100 text-blue-600 px-2 py-0.5 rounded text-[10px] font-bold">{stations.length}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  {isAdmin ? (
+                    <button
+                      onClick={() => setShowAdminDashboard(true)}
+                      className="p-1.5 rounded-lg hover:bg-blue-50 transition-colors group"
+                      title="Panel Admin"
+                    >
+                      <BarChart3 size={14} className="text-slate-400 group-hover:text-blue-600 transition-colors" />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setShowLoginModal(true)}
+                      className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors group"
+                      title="Acceso Admin"
+                    >
+                      <LogIn size={14} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setPanelCollapsed(true)}
+                    className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                    title="Ocultar panel"
+                  >
+                    <ChevronLeft size={14} className="text-slate-400" />
+                  </button>
+                </div>
+              </div>
+              {!selectedStation && (
+                <div className="relative group">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={16} />
+                  <input
+                    type="text"
+                    placeholder="Filtrar por nombre o ID..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full bg-slate-50 border-none rounded-xl py-3 pl-10 pr-3 text-xs font-bold text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all shadow-inner"
+                  />
+                </div>
+              )}
             </div>
-            {!selectedStation && (
-              <div className="relative group">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={16} />
-                <input
-                  type="text"
-                  placeholder="Filtrar por nombre o ID..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full bg-slate-50 border-none rounded-xl py-3 pl-10 pr-3 text-xs font-bold text-slate-700 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 transition-all shadow-inner"
-                />
+
+            {/* Lista Scrollable */}
+            <div className="flex-1 overflow-y-auto p-2 space-y-1.5 custom-scrollbar">
+              {stations
+                .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()) || s.id.includes(searchTerm))
+                .map(station => {
+                  const isSelected = selectedStation?.id === station.id;
+                  return (
+                    <button
+                      key={station.id}
+                      onClick={() => onSelectStation(station)}
+                      className={`w-full text-left rounded-2xl transition-all group overflow-hidden ${
+                        isSelected
+                          ? 'bg-blue-50 border-2 border-blue-400 shadow-md p-3'
+                          : 'bg-white/80 hover:bg-white border border-transparent hover:border-blue-200 hover:shadow-lg p-3'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start mb-1.5">
+                        <span className={`text-[11px] font-black uppercase tracking-tight leading-tight ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>
+                          {station.name}
+                        </span>
+                        <div className={`w-2 h-2 rounded-full shadow-sm flex-shrink-0 mt-0.5 ${station.status === 'online' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className={`text-xs font-black ${isSelected ? 'text-blue-600' : 'text-slate-800'}`}>
+                          {getNetworkVarDisplay(station)}
+                        </span>
+                        <span className="text-[9px] font-bold text-slate-400">{getSimulatedTimeAgo(station.currentData?.timestamp)}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+            </div>
+
+            {/* Footer: Logout si admin */}
+            {isAdmin && (
+              <div className="px-3 py-2 border-t border-slate-100">
+                <button
+                  onClick={logout}
+                  className="flex items-center gap-1.5 text-[9px] font-bold text-slate-400 hover:text-red-500 transition-colors"
+                  title={`Cerrar sesión (${profile?.email})`}
+                >
+                  <LogOut size={12} />
+                  <span>Cerrar sesión</span>
+                </button>
               </div>
             )}
           </div>
-
-          {/* Lista Scrollable */}
-          <div className="flex-1 overflow-y-auto p-2 space-y-1.5 custom-scrollbar">
-            {stations
-              .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()) || s.id.includes(searchTerm))
-              .map(station => {
-                const isSelected = selectedStation?.id === station.id;
-                return (
-                  <button
-                    key={station.id}
-                    onClick={() => onSelectStation(station)}
-                    className={`w-full text-left rounded-2xl transition-all group overflow-hidden ${
-                      isSelected
-                        ? 'bg-blue-50 border-2 border-blue-400 shadow-md p-3'
-                        : 'bg-white/80 hover:bg-white border border-transparent hover:border-blue-200 hover:shadow-lg p-3'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start mb-1.5">
-                      <span className={`text-[11px] font-black uppercase tracking-tight leading-tight ${isSelected ? 'text-blue-700' : 'text-slate-700'}`}>
-                        {station.name}
-                      </span>
-                      <div className={`w-2 h-2 rounded-full shadow-sm flex-shrink-0 mt-0.5 ${station.status === 'online' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      {/* Valor actual de la variable de red */}
-                      <span className={`text-sm font-black ${isSelected ? 'text-blue-600' : 'text-slate-800'}`}>
-                        {getNetworkVarDisplay(station)}
-                      </span>
-                      <span className="text-[9px] font-bold text-slate-400">{getSimulatedTimeAgo(station.currentData?.timestamp)}</span>
-                    </div>
-                  </button>
-                );
-              })}
-          </div>
-        </div>
+        )}
       </div>
 
       {/* CAPA 3: PANEL DERECHO (Nuevo Widget tipo Wunderground) */}
@@ -534,35 +589,7 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      {/* CAPA 5: BOTÓN LOGIN/ADMIN (Bottom Left) */}
-      <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2">
-        {isAdmin ? (
-          <>
-            <button
-              onClick={() => setShowAdminDashboard(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-500/30 hover:from-blue-700 hover:to-indigo-700 transition-all active:scale-95"
-            >
-              <BarChart3 className="w-4 h-4" />
-              Panel Admin
-            </button>
-            <button
-              onClick={logout}
-              className="p-2.5 bg-white/90 backdrop-blur-sm rounded-xl border border-slate-200 shadow-md hover:bg-red-50 hover:border-red-200 transition-all group"
-              title={`Cerrar sesión (${profile?.email})`}
-            >
-              <LogOut className="w-4 h-4 text-slate-400 group-hover:text-red-500 transition-colors" />
-            </button>
-          </>
-        ) : (
-          <button
-            onClick={() => setShowLoginModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white/90 backdrop-blur-sm rounded-xl border border-slate-200 shadow-md text-xs font-bold text-slate-500 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition-all active:scale-95"
-          >
-            <LogIn className="w-4 h-4" />
-            Admin
-          </button>
-        )}
-      </div>
+
 
     </div>
   );

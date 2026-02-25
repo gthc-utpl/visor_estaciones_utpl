@@ -108,7 +108,7 @@ const StationCard: React.FC<StationCardProps> = ({
     ] as const;
 
     return (
-        <div className="w-full max-w-md bg-white shadow-2xl rounded-t-xl md:rounded-xl overflow-hidden border border-slate-200 animate-in slide-in-from-bottom-4 duration-300 flex flex-col max-h-[85vh] md:max-h-[80vh]">
+        <div className="w-full max-w-md bg-white shadow-2xl rounded-t-xl md:rounded-xl overflow-hidden border border-slate-200 animate-in slide-in-from-bottom-4 duration-300 flex flex-col max-h-[80vh] md:max-h-[600px]">
 
             {/* 1. Header (Orange themed like request) */}
             <div className="bg-[#f28e2c] p-4 text-white relative">
@@ -286,7 +286,7 @@ const StationCard: React.FC<StationCardProps> = ({
                         </div>
 
                         {/* Chart Area */}
-                        <div className="w-full min-h-[250px] h-[40vh] max-h-[350px] bg-white rounded-xl border border-slate-200 p-4 shadow-inner">
+                        <div className="w-full h-[300px] bg-white rounded-xl border border-slate-200 p-4 shadow-inner">
                             {loadingHistory ? (
                                 <div className="h-full w-full flex items-center justify-center animate-pulse text-xs font-bold text-slate-400 uppercase">
                                     Cargando Historial...

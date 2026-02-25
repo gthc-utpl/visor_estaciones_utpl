@@ -97,9 +97,13 @@ const StationMap: React.FC<StationMapProps> = ({
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
+    // Zoom responsivo: 13 en Full HD, menor en pantallas pequeñas
+    const screenWidth = window.innerWidth;
+    const initialZoom = screenWidth >= 1920 ? 13 : screenWidth >= 1024 ? 12 : screenWidth >= 768 ? 12 : 11;
+
     mapRef.current = L.map(mapContainerRef.current, {
-      center: [-3.99, -79.20],
-      zoom: 8,
+      center: [-4.02, -79.25], // Valle Loja–Malacatos
+      zoom: initialZoom,
       zoomControl: false,
       attributionControl: false // Limpiamos controles default para UI minimalista
     });
@@ -115,7 +119,7 @@ const StationMap: React.FC<StationMapProps> = ({
     });
 
     // Set initial zoom
-    setCurrentZoom(8);
+    setCurrentZoom(initialZoom);
 
     return () => {
       if (mapRef.current) {
@@ -252,37 +256,38 @@ const StationMap: React.FC<StationMapProps> = ({
 
       {/* Leyenda de Escala - Reubicada para no tapar header */}
       <div className="absolute bottom-24 right-4 z-[1000]">
-        <div className="bg-white/98 p-3 rounded-2xl border border-slate-200 backdrop-blur-xl shadow-lg">
+        <div className={`p-3 rounded-2xl backdrop-blur-xl shadow-lg ${tileLayer === 'satellite' ? 'bg-slate-900/85 border border-slate-600' : 'bg-white/98 border border-slate-200'}`}>
           <div className="flex items-center gap-2 mb-3">
-            <div className="bg-indigo-100 p-1 rounded-md">
-              <Info size={12} className="text-indigo-600" />
+            <div className={`p-1 rounded-md ${tileLayer === 'satellite' ? 'bg-indigo-900' : 'bg-indigo-100'}`}>
+              <Info size={12} className={tileLayer === 'satellite' ? 'text-indigo-300' : 'text-indigo-600'} />
             </div>
-            <span className="text-[9px] font-black uppercase tracking-wider text-slate-700">Escala</span>
+            <span className={`text-[9px] font-black uppercase tracking-wider ${tileLayer === 'satellite' ? 'text-white' : 'text-slate-700'}`}>Escala</span>
           </div>
           <div className="space-y-2">
             {variableRanges.map((range, idx) => (
               <div key={idx} className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full shadow-md" style={{ backgroundColor: range.color, boxShadow: `0 0 8px ${range.shadow}` }}></div>
-                  <span className="text-[9px] font-bold text-slate-700 uppercase tracking-tight">{range.label}</span>
+                  <span className={`text-[9px] font-bold uppercase tracking-tight ${tileLayer === 'satellite' ? 'text-slate-200' : 'text-slate-700'}`}>{range.label}</span>
                 </div>
-                <span className="text-[8px] font-mono text-slate-500 font-bold">
+                <span className={`text-[8px] font-mono font-bold ${tileLayer === 'satellite' ? 'text-slate-300' : 'text-slate-500'}`}>
                   {range.min}{idx === variableRanges.length - 1 ? '+' : ''}{unit}
                 </span>
               </div>
             ))}
-            <div className="pt-2 mt-2 border-t border-slate-200 flex items-center justify-between">
+            <div className={`pt-2 mt-2 border-t flex items-center justify-between ${tileLayer === 'satellite' ? 'border-slate-600' : 'border-slate-200'}`}>
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-full bg-slate-400"></div>
-                <span className="text-[9px] font-bold text-slate-600 uppercase">Sin Dato</span>
+                <span className={`text-[9px] font-bold uppercase ${tileLayer === 'satellite' ? 'text-slate-300' : 'text-slate-600'}`}>Sin Dato</span>
               </div>
-              <span className="text-[8px] font-mono text-slate-400 font-bold">--</span>
+              <span className={`text-[8px] font-mono font-bold ${tileLayer === 'satellite' ? 'text-slate-400' : 'text-slate-400'}`}>--</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div ref={mapContainerRef} className="absolute inset-0 z-0 bg-slate-100" />
+      <div className={`absolute inset-0 z-0 pointer-events-none ${tileLayer === 'satellite' ? 'bg-slate-900' : 'bg-slate-100'}`} />
+      <div ref={mapContainerRef} className="absolute inset-0 z-0" />
 
       <div className="absolute bottom-4 right-4 z-[1000]">
         <div className="bg-white/90 px-3 py-1.5 rounded-lg text-[8px] font-mono text-slate-500 border border-slate-200 uppercase tracking-wider shadow-md">
