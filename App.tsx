@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Cloud,
   Map,
@@ -92,9 +92,12 @@ const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [refreshAgo, setRefreshAgo] = useState('');
+  const failCountRef = useRef(0);
+  const POLL_INTERVAL = 60_000; // 60 segundos
 
-  // Estados visuales - "activeTab" ya no es necesario estructuralmente, pero ayuda a lógica interna si se requiere
-  // Ahora la UI es: ¿Hay estación seleccionada? -> Panel Derecho visible. Siempre -> Mapa visible.
+  // Estados visuales
 
   const [networkSubView, setNetworkSubView] = useState<'list' | 'map'>('map'); // Controla las capas del mapa (light vs satelite)
   const [networkVariable, setNetworkVariable] = useState<string>('temperature');
@@ -148,22 +151,16 @@ const App: React.FC = () => {
     });
   }, [selectedTimeRange]);
 
-  useEffect(() => {
-    loadStations();
-    const interval = setInterval(loadStations, 300000); // 5 min refresh
-    return () => clearInterval(interval);
-  }, []);
-
-  const loadStations = async () => {
+  const loadStations = useCallback(async () => {
     setRefreshingNetwork(true);
     try {
-      const data = await fetchStations(); // data is Station[]
+      const data = await fetchStations();
       const stationsWithData = await Promise.all(
         data.map(async (station) => {
           try {
             const weather = await fetchActualClima(station.id);
             return {
-              ...station, // Preserve existing data (id, name, location, type)
+              ...station,
               status: weather ? 'online' : 'offline',
               lastUpdate: weather?.timestamp || new Date().toISOString(),
               currentData: weather || {},
@@ -183,13 +180,62 @@ const App: React.FC = () => {
         })
       );
       setStations(stationsWithData);
+      setLastRefresh(new Date());
+      failCountRef.current = 0;
     } catch (error) {
       console.error("Error loading stations:", error);
+      failCountRef.current += 1;
     } finally {
       setLoading(false);
       setRefreshingNetwork(false);
     }
-  };
+  }, []);
+
+  // Polling inteligente: 60s, pausa si pestaña oculta, backoff en fallos
+  useEffect(() => {
+    loadStations();
+
+    let intervalId: ReturnType<typeof setInterval>;
+
+    const startPolling = () => {
+      clearInterval(intervalId);
+      const delay = failCountRef.current > 0
+        ? Math.min(POLL_INTERVAL * Math.pow(2, failCountRef.current), 300_000)
+        : POLL_INTERVAL;
+      intervalId = setInterval(() => {
+        if (!document.hidden) loadStations();
+      }, delay);
+    };
+
+    startPolling();
+
+    const onVisibilityChange = () => {
+      if (!document.hidden) {
+        loadStations();
+        startPolling();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [loadStations]);
+
+  // Actualizar texto "hace Xs" cada 10 segundos
+  useEffect(() => {
+    const tick = () => {
+      if (!lastRefresh) { setRefreshAgo(''); return; }
+      const secs = Math.floor((Date.now() - lastRefresh.getTime()) / 1000);
+      if (secs < 10) setRefreshAgo('Ahora');
+      else if (secs < 60) setRefreshAgo(`Hace ${secs}s`);
+      else setRefreshAgo(`Hace ${Math.floor(secs / 60)}m`);
+    };
+    tick();
+    const id = setInterval(tick, 10_000);
+    return () => clearInterval(id);
+  }, [lastRefresh]);
 
   const calculateDateRange = (range: TimeRange) => {
     const end = new Date();
@@ -349,10 +395,17 @@ const App: React.FC = () => {
                     <span className="text-[9px] text-slate-400 font-black uppercase block tracking-wider">Estado</span>
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                        {refreshingNetwork ? (
+                          <span className="absolute inline-flex h-full w-full rounded-full bg-blue-400 animate-ping"></span>
+                        ) : (
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        )}
+                        <span className={`relative inline-flex rounded-full h-2 w-2 ${refreshingNetwork ? 'bg-blue-500' : 'bg-green-500'}`}></span>
                       </span>
-                      <span className="text-xs font-bold text-green-600">{networkStats.online}/{networkStats.total} Online</span>
+                      <span className="text-xs font-bold text-green-600">{networkStats.online}/{networkStats.total}</span>
+                      {refreshAgo && (
+                        <span className="text-[9px] text-slate-400 font-bold">{refreshingNetwork ? 'Actualizando...' : refreshAgo}</span>
+                      )}
                     </div>
                   </div>
                 </div>
