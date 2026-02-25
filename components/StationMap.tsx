@@ -178,7 +178,15 @@ const StationMap: React.FC<StationMapProps> = ({
 
     filteredStations.forEach(station => {
       const rawVal = station.currentData?.[variable] as number | null | undefined;
-      const val = (variable === 'windSpeed' && rawVal !== null && rawVal !== undefined) ? rawVal * 3.6 : rawVal;
+      // Wind: convert m/s → km/h | Rainfall: null → 0 (no rain = 0mm)
+      let val: number | null | undefined;
+      if (variable === 'windSpeed' && rawVal !== null && rawVal !== undefined) {
+        val = rawVal * 3.6;
+      } else if (variable === 'rainfall' && (rawVal === null || rawVal === undefined || isNaN(Number(rawVal)))) {
+        val = 0;
+      } else {
+        val = rawVal;
+      }
       const hasData = val !== null && val !== undefined;
       const isStationOnline = station.status === 'online' && station.currentData && Object.keys(station.currentData).length > 1;
       const markerColor = getColorForValue(hasData ? val : null);
@@ -187,12 +195,12 @@ const StationMap: React.FC<StationMapProps> = ({
 
       // Display logic: value, N/D (online but no sensor), or OFF (offline)
       let valStr: string;
-      if (hasData) {
-        valStr = `${(val as number).toFixed(1)}${unit}`;
-      } else if (isStationOnline) {
-        valStr = 'N/D';
-      } else {
+      if (!isStationOnline && !hasData) {
         valStr = 'OFF';
+      } else if (hasData) {
+        valStr = `${(val as number).toFixed(1)}${unit}`;
+      } else {
+        valStr = 'N/D';
       }
 
       const customIcon = L.divIcon({

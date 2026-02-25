@@ -277,12 +277,14 @@ const App: React.FC = () => {
     if (values.length === 0) return null;
 
     const sum = values.reduce((a, b) => a + b, 0);
-    const avg = (sum / values.length).toFixed(1);
-    const max = Math.max(...values).toFixed(1); // Fix Math.max empty array issue if filter removes all
+    const rawAvg = sum / values.length;
+    const displayAvg = networkVariable === 'windSpeed' ? rawAvg * 3.6 : rawAvg;
+    const decimals = networkVariable === 'humidity' ? 0 : 1;
+    const avg = displayAvg.toFixed(decimals);
     const online = stations.filter(s => s.status === 'online').length;
 
-    return { avg, max, online, total: stations.length };
-  }, [stations, networkVariable]); // Added networkVariable dependency
+    return { avg, online, total: stations.length };
+  }, [stations, networkVariable]);
 
 
 
@@ -341,7 +343,7 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-6">
                   <div>
                     <span className="text-[9px] text-slate-400 font-black uppercase block tracking-wider">Promedio Red</span>
-                    <span className="text-lg font-black text-slate-800 leading-none">{networkStats.avg}<span className="text-[9px] ml-0.5 align-top text-slate-400 font-bold">°C</span></span>
+                    <span className="text-lg font-black text-slate-800 leading-none">{networkStats.avg}<span className="text-[9px] ml-0.5 align-top text-slate-400 font-bold">{getVariableInfo(networkVariable).unit}</span></span>
                   </div>
                   <div>
                     <span className="text-[9px] text-slate-400 font-black uppercase block tracking-wider">Estado</span>
