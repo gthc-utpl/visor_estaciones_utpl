@@ -243,9 +243,8 @@ const StationMap: React.FC<StationMapProps> = ({
       group.addLayer(marker);
     });
 
-    // Only fit bounds on initial load, not on subsequent zoom changes
-    if (stations.length > 0 && !selectedStation && !initialBoundsSetRef.current) {
-      mapRef.current.fitBounds(group.getBounds(), { padding: [60, 60], maxZoom: 10 });
+    // Marcar que ya se cargaron las estaciones (sin sobreescribir el zoom/centro inicial)
+    if (!initialBoundsSetRef.current) {
       initialBoundsSetRef.current = true;
     }
   }, [stations, variable, unit, selectedStation, currentZoom]);
