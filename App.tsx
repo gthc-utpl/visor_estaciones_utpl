@@ -78,7 +78,7 @@ const variableConfig: Record<string, { label: string, unit: string, icon: React.
   }
 };
 
-type TimeRange = '24H' | '3D' | '7D' | '30D' | '1A';
+type TimeRange = '2H' | '4H' | '24H' | '3D' | '7D' | '30D' | '1A';
 
 const App: React.FC = () => {
   const { profile, isAdmin, logout } = useAuth();
@@ -103,9 +103,9 @@ const App: React.FC = () => {
   const [networkVariable, setNetworkVariable] = useState<string>('temperature');
   const [graphVariable, setGraphVariable] = useState<string>('temperature'); // Variable para el gráfico del StationCard
 
-  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('30D');
+  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('4H');
   const [dateRange, setDateRange] = useState<{ start: string, end: string }>({
-    start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    start: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
     end: new Date().toISOString()
   });
 
@@ -128,9 +128,15 @@ const App: React.FC = () => {
   // Update dateRange when selectedTimeRange changes
   useEffect(() => {
     const now = Date.now();
-    let milliseconds = 30 * 24 * 60 * 60 * 1000; // Default 30 days
+    let milliseconds = 4 * 60 * 60 * 1000; // Default 4H
 
     switch (selectedTimeRange) {
+      case '2H':
+        milliseconds = 2 * 60 * 60 * 1000;
+        break;
+      case '4H':
+        milliseconds = 4 * 60 * 60 * 1000;
+        break;
       case '24H':
         milliseconds = 24 * 60 * 60 * 1000;
         break;

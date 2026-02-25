@@ -37,13 +37,13 @@ const formatLocalTime = (isoStr: string, resolution: string, range: string): str
     const mon = d.toLocaleString('es-EC', { month: 'short' });
 
     if (resolution === '15min') {
-        // 1D: solo hora;  3D: día+hora
-        if (range === '1D') return `${hh}:${mm}`;
+        // 4H/1D: solo hora;  3D: día+hora
+        if (range === '4H' || range === '1D') return `${hh}:${mm}`;
         return `${dd}/${String(d.getMonth() + 1).padStart(2, '0')} ${hh}:${mm}`;
     }
     if (resolution === 'horario') {
-        // 3D-7D: día+hora
-        if (range === '1D' || range === '3D') return `${hh}:${mm}`;
+        // 4H-3D: solo hora; 7D+: día+hora
+        if (range === '4H' || range === '1D' || range === '3D') return `${hh}:${mm}`;
         return `${dd}/${String(d.getMonth() + 1).padStart(2, '0')} ${hh}h`;
     }
     // diario o más: 1M→ dd Mon, 3M/1Y→ Mon 'YY
@@ -289,7 +289,7 @@ const loadNetworkVarSelection = (): NetworkVarKey[] => {
 
 // --- Component Principal ---
 
-type DateRangeType = '1D' | '3D' | '7D' | '1M' | '3M' | '1Y' | 'custom';
+type DateRangeType = '4H' | '1D' | '3D' | '7D' | '1M' | '3M' | '1Y' | 'custom';
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     // --- State ---
@@ -304,7 +304,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
     const [mode, setMode] = useState<'red' | 'estacion'>('red');
     const [viewMode, setViewMode] = useState<'graficos' | 'tabla'>('graficos');
     const [showConfigModal, setShowConfigModal] = useState(false);
-    const [dateRange, setDateRange] = useState<DateRangeType>('7D');
+    const [dateRange, setDateRange] = useState<DateRangeType>('3D');
     const [customDates, setCustomDates] = useState({ start: '', end: '' });
 
     // Red de Estaciones state
@@ -435,6 +435,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                     end = new Date(customDates.end + 'T23:59:59');
                 } else {
                     switch (dateRange) {
+                        case '4H': start.setTime(now.getTime() - 4 * 60 * 60 * 1000); break;
                         case '1D': start.setDate(now.getDate() - 1); break;
                         case '3D': start.setDate(now.getDate() - 3); break;
                         case '7D': start.setDate(now.getDate() - 7); break;
@@ -548,6 +549,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
             const now = new Date();
             let start = new Date();
             switch (dateRange) {
+                case '4H': start.setTime(now.getTime() - 4 * 60 * 60 * 1000); break;
                 case '1D': start.setDate(now.getDate() - 1); break;
                 case '3D': start.setDate(now.getDate() - 3); break;
                 case '7D': start.setDate(now.getDate() - 7); break;
@@ -691,7 +693,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onBack }) => {
                                     </div>
                                 )}
                                 <div className="bg-slate-100 rounded-xl p-1 flex gap-0.5">
-                                    {(['1D', '3D', '7D', '1M', '3M', '1Y', 'custom'] as DateRangeType[]).map(r => (
+                                    {(['4H', '1D', '3D', '7D', '1M', '3M', '1Y', 'custom'] as DateRangeType[]).map(r => (
                                         <button
                                             key={r}
                                             onClick={() => setDateRange(r)}

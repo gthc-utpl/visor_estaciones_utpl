@@ -270,7 +270,7 @@ const StationCard: React.FC<StationCardProps> = ({
 
                             {/* Time Range Selector */}
                             <div className="flex gap-1">
-                                {['24H', '3D', '7D', '30D'].map((range) => (
+                                {['2H', '4H', '24H', '3D', '7D', '30D'].map((range) => (
                                     <button
                                         key={range}
                                         className={`px-3 py-1 text-[10px] font-black uppercase tracking-wider rounded-md transition-all ${selectedTimeRange === range
